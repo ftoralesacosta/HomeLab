@@ -13,8 +13,8 @@ services:
       - '443:443'
       - '81:81'
     volumes:
-      - /home/fernando/.volumes/nginx-proxy-manager/data:/data
-      - /home/fernando/.volumes/nginx-proxy-manager/letsencrypt:/etc/letsencrypt
+      - ${DOCKERDIR}/nginx-proxy-manager/data:/data
+      - ${DOCKERDIR}/nginx-proxy-manager/letsencrypt:/etc/letsencrypt
     networks:
       - proxy-net
 
@@ -24,7 +24,7 @@ services:
     restart: always
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /home/fernando/.volumes/portainer/data:/data
+      - ${DOCKERDIR}/portainer/data:/data
     networks:
       - proxy-net
     ports:
@@ -36,7 +36,7 @@ services:
     restart: always
     environment:
       - API_KEY=${Cloudflare_API_KEY}
-      - ZONE=ftoralesacosta.me
+      - ZONE=${DOMAIN_NAME}
     volumes:
       - /etc/localtime:/etc/localtime:ro
 
@@ -46,7 +46,7 @@ services:
     restart: always
     environment:
       - API_KEY=${Cloudflare_API_KEY}
-      - ZONE=ftoralesacosta.me
+      - ZONE=${DOMAIN_NAME}
       - SUBDOMAIN=mc
       - PROXIED=false
     volumes:
@@ -60,7 +60,7 @@ services:
     restart: always
     network_mode: host
     volumes:
-      - /home/fernando/.volumes/homebridge:/homebridge
+      - ${DOCKERDIR}/homebridge:/homebridge
     logging:
       driver: json-file
       options:
@@ -73,7 +73,11 @@ services:
     restart: unless-stopped
     network_mode: host
     volumes:
-      - /home/fernando/.volumes/home-assistant/config:/config
+      - ${DOCKERDIR}/home-assistant/config:/config
+      # configuration.yaml, automations.yaml, scripts.yaml, scenes.yaml under
+      # /config are symlinks into this path; mounted at the same absolute
+      # path so the symlinks resolve inside the container too.
+      - /home/fernando/HomeLab/HomeAssistant:/home/fernando/HomeLab/HomeAssistant
       - /etc/localtime:/etc/localtime:ro
 
   jellyfin:
@@ -89,8 +93,8 @@ services:
     devices:
       - /dev/dri/renderD128:/dev/dri/renderD128
     volumes:
-      - /home/fernando/.volumes/jellyfin/config:/config
-      - /home/fernando/.volumes/jellyfin/cache:/cache
+      - ${DOCKERDIR}/jellyfin/config:/config
+      - ${DOCKERDIR}/jellyfin/cache:/cache
       - /mnt/data/Media/:/media
 
   mc:
@@ -109,7 +113,7 @@ services:
       VERSION: "1.21.5"
       SERVER_PORT: "25566"
     volumes:
-      - /home/fernando/.volumes/minecraft-server_SNAPSHOT/data:/data
+      - ${DOCKERDIR}/minecraft-server_SNAPSHOT/data:/data
 
   # --- VPN and Torrent Services ---
   vpn:
@@ -129,13 +133,13 @@ services:
       - VPN_SERVICE_PROVIDER=mullvad
       - VPN_TYPE=wireguard
       - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
-      - WIREGUARD_ADDRESSES=10.66.129.41/32
+      - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESS}
       - FIREWALL_ALLOWED_PORTS=8080,6881,6881/udp
       - SERVER_CITIES=New York NY
       - TZ=America/New_York
         #- DOT_SERVERS=10.64.0.1,10.88.0.1
     volumes:
-      - /home/fernando/.volumes/gluetun:/gluetun
+      - ${DOCKERDIR}/gluetun:/gluetun
 
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:latest
@@ -148,7 +152,7 @@ services:
       - TZ=America/New_York
       - WEBUI_PORT=8080
     volumes:
-      - /home/fernando/.volumes/qbittorrent/config:/config
+      - ${DOCKERDIR}/qbittorrent/config:/config
       - /mnt/data/Downloads/:/downloads
     depends_on:
       vpn:
@@ -167,7 +171,7 @@ services:
         - PGID=1000 
         - TZ=America/New_York
       volumes:
-        - /home/fernando/.volumes/sabnzbd/config:/config
+        - ${DOCKERDIR}/sabnzbd/config:/config
         - /mnt/data/Downloads/:/downloads
         - /mnt/data/Media/:/media
 
@@ -185,7 +189,7 @@ services:
       - TZ=America/New_York
       - UMASK_SET=022
     volumes:
-      - /home/fernando/.volumes/radarr/config:/config
+      - ${DOCKERDIR}/radarr/config:/config
       - /mnt/data/Media/:/media
       - /mnt/data/Downloads/:/downloads
 
@@ -202,7 +206,7 @@ services:
       - PGID=1000
       - TZ=America/New_York
     volumes:
-      - /home/fernando/.volumes/sonarr/config:/config
+      - ${DOCKERDIR}/sonarr/config:/config
       - /mnt/data/Media/:/media
       - /mnt/data/Downloads/:/downloads
 
@@ -219,7 +223,7 @@ services:
       - PGID=1000
       - TZ=America/New_York
     volumes:
-      - /home/fernando/.volumes/prowlarr/config:/config
+      - ${DOCKERDIR}/prowlarr/config:/config
 
   bazarr:
     image: lscr.io/linuxserver/bazarr:latest
@@ -232,7 +236,7 @@ services:
     networks:
       - proxy-net
     volumes:
-      - /home/fernando/.volumes/bazarr/config:/config
+      - ${DOCKERDIR}/bazarr/config:/config
       - /mnt/data/Media/:/media
       - /mnt/data/Downloads/:/downloads
     ports:
@@ -249,3 +253,12 @@ services:
       - proxy-net
     ports:
       - "8191:8191"
+
+  website:                                
+    image: nginx:alpine                              
+    container_name: personal-website    
+    restart: unless-stopped    
+    volumes:                             
+      - ../ftoralesacosta.github.io:/usr/share/nginx/html:ro    
+    networks:           
+      - proxy-net  

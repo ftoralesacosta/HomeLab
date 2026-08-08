@@ -1,0 +1,65 @@
+
+# Loads default set of integrations. Do not remove.
+default_config:
+
+# Load frontend themes from the themes folder
+frontend:
+  themes: !include_dir_merge_named themes
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+http:
+  use_x_forwarded_for: true
+  trusted_proxies:
+    - 172.16.0.0/12  # Docker bridge IP ranges
+    - 192.168.4.0/24 #local network subnet
+
+fan:
+  - platform: template
+    fans:
+      virtual_ac_fan:
+        friendly_name: "Virtual AC Fan"
+        value_template: "{{ is_state('climate.living', 'fan_only') }}"
+        percentage_template: >
+          {% set mode = state_attr('climate.living', 'fan_mode') %}
+          {% if mode == 'low' %} 33
+          {% elif mode == 'medium' %} 66
+          {% elif mode == 'high' %} 100
+          {% else %} 0
+          {% endif %}
+        speed_count: 3
+        turn_on:
+          action: climate.set_hvac_mode
+          target:
+            entity_id: climate.living
+          data:
+            hvac_mode: fan_only
+        turn_off:
+          action: climate.set_hvac_mode
+          target:
+            entity_id: climate.living
+          data:
+            hvac_mode: off
+        set_percentage:
+          - action: climate.set_hvac_mode
+            target:
+              entity_id: climate.living
+            data:
+              hvac_mode: fan_only
+          - action: climate.set_fan_mode
+            target:
+              entity_id: climate.living
+            data:
+              fan_mode: >
+                {% if percentage <= 33 %} low
+                {% elif percentage <= 66 %} medium
+                {% else %} high
+                {% endif %}
+
+input_boolean:
+  energy_saver:
+    name: LG AC Energy Saver
+    icon: mdi:leaf
+

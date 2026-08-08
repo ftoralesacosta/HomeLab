@@ -1,0 +1,251 @@
+networks:
+  proxy-net:
+    driver: bridge
+
+services:
+  # --- Management and Core Networking ---
+  reverse-proxy:
+    image: 'jc21/nginx-proxy-manager:latest'
+    container_name: nginx-proxy-manager
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+      - '81:81'
+    volumes:
+      - ${DOCKERDIR}/nginx-proxy-manager/data:/data
+      - ${DOCKERDIR}/nginx-proxy-manager/letsencrypt:/etc/letsencrypt
+    networks:
+      - proxy-net
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${DOCKERDIR}/portainer/data:/data
+    networks:
+      - proxy-net
+    ports:
+      - 9000
+
+  cloudflare-ddns:
+    image: oznu/cloudflare-ddns:latest
+    container_name: cloudflare-ddns
+    restart: always
+    environment:
+      - API_KEY=${Cloudflare_API_KEY}
+      - ZONE=${DOMAIN_NAME}
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+
+  cloudflare-ddns-for-minecraft:
+    image: oznu/cloudflare-ddns:latest
+    container_name: cloudflare-ddns-for-minecraft
+    restart: always
+    environment:
+      - API_KEY=${Cloudflare_API_KEY}
+      - ZONE=${DOMAIN_NAME}
+      - SUBDOMAIN=mc
+      - PROXIED=false
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+
+
+  # --- Home Automation and Media ---
+  homebridge:
+    image: homebridge/homebridge:latest
+    container_name: homebridge
+    restart: always
+    network_mode: host
+    volumes:
+      - ${DOCKERDIR}/homebridge:/homebridge
+    logging:
+      driver: json-file
+      options:
+        max-size: "10mb"
+        max-file: "1"
+
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: homeassistant
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ${DOCKERDIR}/home-assistant/config:/config
+      - /etc/localtime:/etc/localtime:ro
+
+  jellyfin:
+    image: jellyfin/jellyfin
+    container_name: jellyfin
+    restart: unless-stopped
+    networks:
+      - proxy-net
+    ports:
+        - "8096:8096"
+    group_add:
+      - "110"
+    devices:
+      - /dev/dri/renderD128:/dev/dri/renderD128
+    volumes:
+      - ${DOCKERDIR}/jellyfin/config:/config
+      - ${DOCKERDIR}/jellyfin/cache:/cache
+      - /mnt/data/Media/:/media
+
+  mc:
+    image: itzg/minecraft-server
+    container_name: minecraft-server
+    restart: always
+    networks:
+      - proxy-net
+    ports:
+      - "25566:25566"
+    tty: true
+    stdin_open: true
+    environment:
+      EULA: "TRUE"
+      MEMORY: "4G"
+      VERSION: "1.21.5"
+      SERVER_PORT: "25566"
+    volumes:
+      - ${DOCKERDIR}/minecraft-server_SNAPSHOT/data:/data
+
+  # --- VPN and Torrent Services ---
+  vpn:
+    image: ghcr.io/qdm12/gluetun:latest
+
+    container_name: vpn-gateway
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    networks: # <-- ADD THIS SECTION
+      - proxy-net
+    ports:
+      - "8080:8080"     # qBittorrent webUI
+      - "6881:6881"     # torrent port tcp
+      - "6881:6881/udp" # torrent port udp
+    environment:
+      - VPN_SERVICE_PROVIDER=mullvad
+      - VPN_TYPE=wireguard
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
+      - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESS}
+      - FIREWALL_ALLOWED_PORTS=8080,6881,6881/udp
+      - SERVER_CITIES=New York NY
+      - TZ=America/New_York
+        #- DOT_SERVERS=10.64.0.1,10.88.0.1
+    volumes:
+      - ${DOCKERDIR}/gluetun:/gluetun
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    restart: always
+    network_mode: "service:vpn"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+      - WEBUI_PORT=8080
+    volumes:
+      - ${DOCKERDIR}/qbittorrent/config:/config
+      - /mnt/data/Downloads/:/downloads
+    depends_on:
+      vpn:
+        condition: service_healthy
+
+  sabnzbd:
+      image: lscr.io/linuxserver/sabnzbd:latest 
+      container_name: sabnzbd
+      restart: always
+      networks: 
+        - proxy-net 
+      ports:
+        - "8081:8080"
+      environment:
+        - PUID=1000 
+        - PGID=1000 
+        - TZ=America/New_York
+      volumes:
+        - ${DOCKERDIR}/sabnzbd/config:/config
+        - /mnt/data/Downloads/:/downloads
+        - /mnt/data/Media/:/media
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    restart: always
+    networks:
+      - proxy-net
+    ports:
+      - 7878
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+      - UMASK_SET=022
+    volumes:
+      - ${DOCKERDIR}/radarr/config:/config
+      - /mnt/data/Media/:/media
+      - /mnt/data/Downloads/:/downloads
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    restart: always
+    networks:
+      - proxy-net
+    ports:
+      - "8989:8989"
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+    volumes:
+      - ${DOCKERDIR}/sonarr/config:/config
+      - /mnt/data/Media/:/media
+      - /mnt/data/Downloads/:/downloads
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    restart: always
+    networks:
+      - proxy-net
+    ports:
+      - 9696
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+    volumes:
+      - ${DOCKERDIR}/prowlarr/config:/config
+
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+    networks:
+      - proxy-net
+    volumes:
+      - ${DOCKERDIR}/bazarr/config:/config
+      - /mnt/data/Media/:/media
+      - /mnt/data/Downloads/:/downloads
+    ports:
+      - 6767:6767
+
+  flaresolverr:
+    image: 21hsmw/flaresolverr:nodriver
+    container_name: flaresolverr
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=info
+      - TZ=America/New_York
+    networks:
+      - proxy-net
+    ports:
+      - "8191:8191"
