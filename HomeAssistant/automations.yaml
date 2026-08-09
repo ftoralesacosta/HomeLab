@@ -3,6 +3,19 @@
   trigger:
   - platform: state
     entity_id: input_boolean.energy_saver
+  condition:
+  # Only push a command to the AC when the switch and the AC actually
+  # disagree - i.e. the user just toggled the HomeKit switch. When the
+  # switch changed because "Energy Saver Sync" mirrored the AC's own
+  # state into it, the two already agree and we must NOT echo a command
+  # back: on this unit ENERGY_SAVING is a job mode (COOL/AIR_DRY/FAN/
+  # ENERGY_SAVING are mutually exclusive), and LG's cloud takes ~1.7s to
+  # deliver, so a stale echo overrides whatever the user just selected on
+  # the AC itself.
+  - condition: template
+    value_template: >
+      {{ is_state('input_boolean.energy_saver', 'on')
+         != is_state_attr('climate.living', 'preset_mode', 'energy_saving') }}
   action:
   - choose:
     - conditions:
@@ -45,6 +58,11 @@
   - platform: state
     entity_id: climate.living
     attribute: preset_mode
+    # Short debounce only - just enough to absorb the duplicate/transient
+    # reports LG's cloud sometimes emits (~1s apart). The real loop-breaker
+    # is the guard condition on "Energy Saver Control", so this does not
+    # need to be long.
+    for: '00:00:03'
   - platform: homeassistant
     event: start
   action:
