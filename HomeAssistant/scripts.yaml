@@ -1,0 +1,33 @@
+virtual_ac_fan_set_speed:
+  alias: Virtual AC Fan - Set Speed
+  mode: restart
+  fields:
+    percentage:
+      description: Target fan speed percentage (0-100)
+  sequence:
+    - delay:
+        milliseconds: 400
+    - if:
+        - condition: template
+          value_template: "{{ percentage | float == 0 }}"
+      then:
+        - action: climate.set_hvac_mode
+          target:
+            entity_id: climate.living
+          data:
+            hvac_mode: "off"
+      else:
+        - action: climate.set_hvac_mode
+          target:
+            entity_id: climate.living
+          data:
+            hvac_mode: fan_only
+        - action: climate.set_fan_mode
+          target:
+            entity_id: climate.living
+          data:
+            fan_mode: >
+              {% if percentage | float <= 50 %} low
+              {% elif percentage | float <= 83 %} medium
+              {% else %} high
+              {% endif %}
