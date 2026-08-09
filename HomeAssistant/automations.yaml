@@ -45,7 +45,12 @@
   - platform: state
     entity_id: climate.living
     attribute: preset_mode
+  - platform: homeassistant
+    event: start
   action:
+  - wait_template: "{{ states('climate.living') not in ['unknown', 'unavailable'] }}"
+    timeout: '00:01:00'
+    continue_on_timeout: true
   - if:
     - condition: template
       value_template: '{{ is_state_attr(''climate.living'', ''preset_mode'', ''energy_saving'')

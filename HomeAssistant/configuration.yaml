@@ -2,6 +2,11 @@
 # Loads default set of integrations. Do not remove.
 default_config:
 
+logger:
+  default: warning
+  logs:
+    homeassistant.components.lg_thinq: debug
+
 # Load frontend themes from the themes folder
 frontend:
   themes: !include_dir_merge_named themes
@@ -15,48 +20,58 @@ http:
   trusted_proxies:
     - 172.16.0.0/12  # Docker bridge IP ranges
     - 192.168.4.0/24 #local network subnet
+    - 172.23.0.11  # nginx-proxy-manager container (explicit, in case of CIDR-match regression after HA 2026.8.1 upgrade)
 
-fan:
-  - platform: template
-    fans:
-      virtual_ac_fan:
-        friendly_name: "Virtual AC Fan"
-        value_template: "{{ is_state('climate.living', 'fan_only') }}"
-        percentage_template: >
+template:
+  - fan:
+      - name: "Virtual AC Fan"
+        unique_id: virtual_ac_fan
+        state: "{{ is_state('climate.living', 'fan_only') }}"
+        percentage: >
           {% set mode = state_attr('climate.living', 'fan_mode') %}
-          {% if mode == 'low' %} 33
-          {% elif mode == 'medium' %} 66
+          {% if mode == 'low' %} {{ (100/3) | round(2) }}
+          {% elif mode == 'mid' %} {{ (200/3) | round(2) }}
           {% elif mode == 'high' %} 100
           {% else %} 0
           {% endif %}
         speed_count: 3
         turn_on:
-          action: climate.set_hvac_mode
-          target:
-            entity_id: climate.living
-          data:
-            hvac_mode: fan_only
-        turn_off:
-          action: climate.set_hvac_mode
-          target:
-            entity_id: climate.living
-          data:
-            hvac_mode: off
-        set_percentage:
           - action: climate.set_hvac_mode
             target:
               entity_id: climate.living
             data:
               hvac_mode: fan_only
-          - action: climate.set_fan_mode
+        turn_off:
+          - action: climate.set_hvac_mode
             target:
               entity_id: climate.living
             data:
-              fan_mode: >
-                {% if percentage <= 33 %} low
-                {% elif percentage <= 66 %} medium
-                {% else %} high
-                {% endif %}
+              hvac_mode: off
+        set_percentage:
+          - if:
+              - condition: template
+                value_template: "{{ percentage == 0 }}"
+            then:
+              - action: climate.set_hvac_mode
+                target:
+                  entity_id: climate.living
+                data:
+                  hvac_mode: off
+            else:
+              - action: climate.set_hvac_mode
+                target:
+                  entity_id: climate.living
+                data:
+                  hvac_mode: fan_only
+              - action: climate.set_fan_mode
+                target:
+                  entity_id: climate.living
+                data:
+                  fan_mode: >
+                    {% if percentage <= 50 %} low
+                    {% elif percentage <= 83 %} mid
+                    {% else %} high
+                    {% endif %}
 
 input_boolean:
   energy_saver:
