@@ -2,10 +2,14 @@
 # Loads default set of integrations. Do not remove.
 default_config:
 
+# No per-integration `logs:` here on purpose. The UI debug toggle
+# (Settings -> Devices & Services -> <integration> -> Enable debug logging)
+# persists to .storage/core.logger and is applied at runtime, which silently
+# overrides whatever `logs:` sets at startup - so pinning a level here looks
+# like it works but stops as soon as that toggle is used. Enable debug on
+# demand via the toggle, or with the logger.set_level action.
 logger:
   default: warning
-  logs:
-    homeassistant.components.lg_thinq: debug
 
 # Load frontend themes from the themes folder
 frontend:

@@ -101,6 +101,95 @@ requires a full HA restart anyway (e.g. `configuration.yaml`).
 `docker compose up -d homeassistant` is only needed if
 `docker-compose.yml` itself changes (e.g. this volume mount).
 
+## Debug logging (and why `logs:` in configuration.yaml doesn't stick)
+
+**Gotcha:** the per-integration debug toggle in the UI (Settings → Devices &
+Services → *integration* → ⋮ → Enable debug logging) persists to
+`.storage/core.logger` and is applied **at runtime**, which silently
+overrides whatever `logger: logs:` sets at startup. Pinning
+`homeassistant.components.lg_thinq: debug` in `configuration.yaml` therefore
+*looks* like it works — it logs for the first few seconds after a restart —
+and then goes dead the moment that UI toggle is used, with no error anywhere.
+That's why `configuration.yaml` only sets `logger: default: warning` and
+leaves per-integration levels alone.
+
+To enable debug on demand, use the UI toggle above, or for a one-off that
+doesn't persist across restarts, run the `logger.set_level` action
+(Settings → Tools → Actions → YAML mode):
+
+```yaml
+action: logger.set_level
+data:
+  homeassistant.components.lg_thinq: debug
+```
+
+Note `lg_thinq` is push-driven (MQTT) plus an hourly energy-sensor update —
+it is *not* a 5-minute poller. Quiet gaps of 45–60 minutes are normal when
+the AC isn't changing, so silence alone doesn't mean logging is broken.
+
+### What to look for
+
+Put both directions on one timeline — that's what makes feedback loops
+obvious:
+
+```bash
+# what the AC reported vs what HA sent
+grep -E "async_handle_device_event|async_set_(preset|hvac|fan)_mode" home-assistant.log
+```
+
+- `async_handle_device_event … 'currentJobMode': 'COOL'` — the **device**
+  reporting its state.
+- `async_set_preset_mode: energy_saving` — **HA** sending a command.
+
+A command from HA takes **~1.7–2.3 s** to land via LG's cloud, so an
+unexplained device report ~2 s after an HA command is almost always HA's own
+echo, not the user.
+
+## LG AC (`climate.living`) + HomeKit — hard-won notes
+
+**`ENERGY_SAVING` is a job mode, not a flag.** The device reports a single
+field, `airConJobMode.currentJobMode`, whose values (`COOL`, `AIR_DRY`,
+`FAN`, `ENERGY_SAVING`) are mutually exclusive. The `lg_thinq` integration
+splits that one field into two HA concepts — `hvac_mode` *and*
+`preset_mode` — and reports `hvac_mode: cool` while the unit is in
+`ENERGY_SAVING`. Two HA controls therefore write to the same device field,
+which is what made the feedback loop below possible.
+
+**The Energy Saver echo loop (fixed — don't reintroduce it).**
+`Energy Saver Sync` mirrors the AC's `preset_mode` into
+`input_boolean.energy_saver` (which is what HomeKit shows); `Energy Saver
+Control` pushes the switch's state back to the AC. Because Control triggered
+on *any* change to that boolean — including Sync's own writes — every
+device-originated change was echoed straight back as a command. Press Mode on
+the unit to leave Energy Saver and HA's stale echo would land ~2 s later and
+put it right back. Control now carries a guard condition so it only commands
+the AC when the switch and the AC actually **disagree** (i.e. the user
+toggled HomeKit). This also stops the restored boolean from re-asserting Eco
+onto the AC on every HA restart.
+
+**HomeKit protocol limits (not fixable in config).** Apple's `HeaterCooler`
+service defines only Auto/Heat/Cool — there is **no "Fan Only" mode**. Hence
+the separate `fan.virtual_ac_fan` template fan, which is the only way to
+reach fan-only (condenser off) from HomeKit. Consequences:
+
+- Turning that fan on puts `climate.living` into `fan_only`, so the AC tile
+  shows as *Active* — unavoidable, both tiles are backed by the same entity.
+- The AC tile's own fan-speed slider is interactive while the unit is Off,
+  but the commands fail (`Command not supported in POWER OFF`) because HA
+  core sends `set_fan_mode` without first activating the unit.
+
+**Fan speed.** Valid HA values are `low` / `medium` / `high` (the debug log
+shows `mid` — that's the integration's internal name for `medium`, not a
+value to use in config). HomeKit fires *many* intermediate values during a
+single slider drag, fast enough to trip LG's cloud rate limit
+(`Fail device control`). `set_percentage` therefore delegates to
+`script.virtual_ac_fan_set_speed` via non-blocking `script.turn_on`; that
+script is `mode: restart` with a leading 400 ms `delay`, so a drag debounces
+down to exactly one command for the final value.
+
+**YAML trap:** `hvac_mode: off` unquoted is parsed as the boolean `false` and
+silently fails validation. Always quote it: `hvac_mode: "off"`.
+
 ## Note
 
 `.volumes/home-assistant/docker-compose.yaml` (singular container, no
