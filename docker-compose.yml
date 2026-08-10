@@ -115,6 +115,23 @@ services:
     volumes:
       - ${DOCKERDIR}/minecraft-server_SNAPSHOT/data:/data
 
+  # --- Personal Finance ---
+  actual:
+    image: actualbudget/actual-server:latest
+    container_name: actual-budget
+    restart: unless-stopped
+    networks:
+      - proxy-net
+    ports:
+      - "5006:5006"
+    environment:
+      - TZ=America/New_York
+      # Default is 20MB, which a few years of budget history can outgrow.
+      - ACTUAL_UPLOAD_FILE_SYNC_SIZE_LIMIT_MB=100
+    volumes:
+      # Holds server-files/ (accounts, SimpleFIN keys) and user-files/ (budgets).
+      - ${DOCKERDIR}/actual-budget/data:/data
+
   # --- VPN and Torrent Services ---
   vpn:
     image: ghcr.io/qdm12/gluetun:latest
