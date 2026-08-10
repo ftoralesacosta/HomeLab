@@ -17,11 +17,21 @@ virtual_ac_fan_set_speed:
           data:
             hvac_mode: "off"
       else:
-        - action: climate.set_hvac_mode
-          target:
-            entity_id: climate.living
-          data:
-            hvac_mode: fan_only
+        # Only force fan-only when the AC was OFF (i.e. the slider is being
+        # used to turn it on). If it's already running - cool, dry, fan_only -
+        # leave hvac_mode alone so changing speed while cooling doesn't yank
+        # the unit out of cool. Note "off" must stay quoted: bare off is
+        # parsed as the YAML boolean false.
+        - if:
+            - condition: state
+              entity_id: climate.living
+              state: "off"
+          then:
+            - action: climate.set_hvac_mode
+              target:
+                entity_id: climate.living
+              data:
+                hvac_mode: fan_only
         - action: climate.set_fan_mode
           target:
             entity_id: climate.living

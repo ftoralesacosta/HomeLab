@@ -30,7 +30,13 @@ template:
   - fan:
       - name: "Virtual AC Fan"
         unique_id: virtual_ac_fan
-        state: "{{ is_state('climate.living', 'fan_only') }}"
+        # ON whenever the AC is running in ANY mode - not just fan_only - so
+        # the speed slider stays usable while cooling. The AC tile's own fan
+        # slider can't be used for this: it fires 4+ writes per drag (LG
+        # rejects the burst) and never lands on the 33.33 detent, because on
+        # a HeaterCooler 0 is a dead stop that HA rejects. A Fan accessory
+        # has a real 0 = off, so all three speeds are reachable.
+        state: "{{ states('climate.living') not in ['off', 'unknown', 'unavailable'] }}"
         percentage: >
           {% set mode = state_attr('climate.living', 'fan_mode') %}
           {% if mode == 'low' %} {{ (100/3) | round(2) }}
