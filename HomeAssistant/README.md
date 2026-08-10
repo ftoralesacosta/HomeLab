@@ -169,20 +169,53 @@ onto the AC on every HA restart.
 
 **HomeKit protocol limits (not fixable in config).** Apple's `HeaterCooler`
 service defines only Auto/Heat/Cool — there is **no "Fan Only" mode**. Hence
-the separate `fan.virtual_ac_fan` template fan, which is the only way to
-reach fan-only (condenser off) from HomeKit. Consequences:
+the separate `fan.virtual_ac_fan` template fan, the only way to reach
+fan-only (condenser off) from HomeKit. Turning it on puts `climate.living`
+into `fan_only`, so the AC tile also shows as *Active* — unavoidable, both
+tiles are backed by the same entity.
 
-- Turning that fan on puts `climate.living` into `fan_only`, so the AC tile
-  shows as *Active* — unavoidable, both tiles are backed by the same entity.
-- The AC tile's own fan-speed slider is interactive while the unit is Off,
-  but the commands fail (`Command not supported in POWER OFF`) because HA
-  core sends `set_fan_mode` without first activating the unit.
+**`fan.virtual_ac_fan` is the fan control for *every* mode, not just
+fan-only.** It was widened deliberately, because the AC tile's own slider
+can't do the job (see below). Its semantics:
 
-**Fan speed.** Valid HA values are `low` / `medium` / `high` (the debug log
-shows `mid` — that's the integration's internal name for `medium`, not a
-value to use in config). HomeKit fires *many* intermediate values during a
-single slider drag, fast enough to trip LG's cloud rate limit
-(`Fail device control`). `set_percentage` therefore delegates to
+| Action | Result |
+| --- | --- |
+| tap on, AC off | `fan_only` — never starts cooling |
+| tap off | AC off, whatever mode it was in |
+| slider, AC running | sets `fan_mode` only; mode is preserved (stays in cool) |
+| slider, AC off | `fan_only` at that speed |
+| slider to 0% | AC off |
+
+So `state:` is *"AC is not off"*, **not** *"AC is in fan_only"* — that's what
+keeps the slider usable while cooling. Don't narrow it back.
+
+**The AC tile's own fan slider is unusable — use the Virtual AC Fan
+instead.** Confirmed from `homekit` debug traces, all three independently:
+
+- It fires **4+ `RotationSpeed` writes per drag**, each becoming its own LG
+  command, and LG rejects the burst with `Fail device control`. Unlike the
+  template fan, this path is HA *core* (`homekit.climate_base`) and cannot be
+  debounced.
+- It **never lands on 33.33** (low). Every write logged is
+  `66.66666666666667` or `0`, so `low` is never even requested.
+- `0` is a dead stop: HA logs `Fan does not support off, resetting to on` and
+  snaps the slider back, because a climate entity's fan can't be switched off
+  independently of the unit. Combined with the re-sync after each failure,
+  the low detent is effectively impossible to hit.
+- While the unit is Off it's still interactive, but commands fail with
+  `Command not supported in POWER OFF`.
+
+A single correctly-valued command works fine — `async_set_fan_mode: low`
+succeeds in ~1.6 s — which is precisely why the debounced template fan works
+and the tile doesn't. **There is no way to hide that slider:** the only
+climate `entity_config` option is `type` (`thermostat` / `heater_cooler`) and
+both expose fan speed; stripping `FAN_MODE` from `supported_features` would
+remove it but also break `climate.set_fan_mode`, which the template fan
+depends on.
+
+**Fan speed values.** Valid HA values are `low` / `medium` / `high` (the
+debug log shows `mid` — that's the integration's internal name for `medium`,
+not a value to use in config). `set_percentage` delegates to
 `script.virtual_ac_fan_set_speed` via non-blocking `script.turn_on`; that
 script is `mode: restart` with a leading 400 ms `delay`, so a drag debounces
 down to exactly one command for the final value.
