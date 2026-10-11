@@ -1,0 +1,15 @@
+use_default_settings: true
+
+server:
+  # secret_key is supplied via the SEARXNG_SECRET env var (see .env),
+  # which overrides the config per the official image.
+  # No rate limiting / bot protection: single-user instance on a private
+  # network, queried only from the host.
+  limiter: false
+  public_instance: false
+
+search:
+  # JSON is required so the host agent can query programmatically.
+  formats:
+    - html
+    - json
