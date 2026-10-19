@@ -285,22 +285,6 @@ services:
     volumes:
       - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
 
-  # --- Tailscale self-hosted control server (headscale) ---
-  # No host ports: nginx-proxy-manager proxies to the container over the
-  # docker network (forward host: headscale, port 8080).
-  headscale:
-    image: headscale/headscale:v0.29.4
-    container_name: headscale
-    restart: unless-stopped
-    command: ["serve"]
-    environment:
-      - TZ=America/New_York
-    networks:
-      - proxy-net
-    volumes:
-      - ./tailnet/headscale/config.yaml:/etc/headscale/config.yaml:ro
-      - ./tailnet/headscale/data:/var/lib/headscale
-
   website:                                
     image: nginx:alpine                              
     container_name: personal-website    
