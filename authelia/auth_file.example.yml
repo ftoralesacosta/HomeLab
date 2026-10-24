@@ -1,0 +1,18 @@
+# Tracked template - copy to auth_file.yml (gitignored) and fill in bcrypt hashes.
+# v4.38+ format: 'users' is a map keyed by username.
+# Generate a hash:
+#   python3 -c "import crypt,sys; print(crypt.crypt(sys.argv[1], crypt.mksalt(crypt.METHOD_BLOWFISH)))" 'newpassword'
+users:
+  exampleuser:
+    displayname: "Example User"
+    password: "$2b$12$REPLACE_WITH_BCRYPT_HASH"
+    email: example@example.com
+    groups: [family]
+
+groups:
+  - admin
+  - family
+
+# Note (4.39): after a user changes their password in the UI, Authelia rewrites
+# the whole file in expanded form (all OIDC claim fields, argon2id hash) and
+# drops comments. Minimal entries like the one above are still valid input.

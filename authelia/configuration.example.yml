@@ -1,0 +1,49 @@
+# Tracked template - copy to configuration.yml (gitignored) and fill in real secrets.
+#   openssl rand -base64 32   # for the storage encryption_key
+# Schema note (2026-10-20): written for the v4.38+ image that `latest` currently
+# resolves to. The newer v5-style keys (top-level `secret`, `identity_providers`,
+# `storage.type/path`, `totp.issuer_name`, `server` timeouts) are rejected by it.
+
+theme: auto
+
+server:
+  address: tcp://:9091/
+
+identity_validation:
+  reset_password:
+    jwt_secret: "REPLACE_ME"
+
+session:
+  name: authelia
+  expiration: 3600
+  inactivity: 300
+  same_site: lax
+  # 4.38+ multi-domain format: one cookie for the apex covers all subdomains.
+  cookies:
+    - domain: ftoralesacosta.me
+      authelia_url: https://auth.ftoralesacosta.me
+
+storage:
+  encryption_key: "REPLACE_ME_openssl_rand_base64_32"
+  local:
+    path: /config/data/database.sqlite3
+
+authentication_backend:
+  # 4.38: backend is selected by which block is present; no 'type' key.
+  file:
+    path: /config/auth_file.yml
+
+notifier:
+  smtp:
+    address: submission://smtp.gmail.com:587  # submission = port 587 with STARTTLS
+    username: you@example.com
+    # password: supplied via AUTHELIA_NOTIFIER_SMTP_PASSWORD (from .env)
+    sender: you@example.com
+
+access_control:
+  # Per-service allow/deny is handled by the NPM access list (Authelia method),
+  # not here. This only governs the auth domain itself.
+  default_policy: deny
+  rules:
+    - domain: "auth.ftoralesacosta.me"
+      policy: one_factor

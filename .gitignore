@@ -1,2 +1,4 @@
 .env
 *.bak-*
+authelia/configuration.yml
+authelia/auth_file.yml

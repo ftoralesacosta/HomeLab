@@ -18,6 +18,31 @@ services:
     networks:
       - proxy-net
 
+  # --- Auth ---
+  # SSO for the "Authelia" NPM access lists (see authelia/README.md).
+  # Served at https://auth.ftoralesacosta.me once the NPM host is added;
+  # until then testable at http://127.0.0.1:9091.
+  authelia:
+    image: ghcr.io/authelia/authelia:4.39  # pinned: :latest broke the config on 4.39 (2026-10-24)
+    container_name: authelia
+    restart: unless-stopped
+    networks:
+      - proxy-net
+    environment:
+      # Gmail app password lives in .env (gitignored); Authelia picks it up
+      # via its env-override convention (AUTHELIA_ + config key path).
+      - AUTHELIA_NOTIFIER_SMTP_PASSWORD=${GMAIL_APP_PASSWORD}
+    # Loopback-only test port. NPM reaches authelia:9091 over proxy-net,
+    # safe to drop this mapping once the NPM host is up.
+    ports:
+      - "127.0.0.1:9091:9091"
+    volumes:
+      - ./authelia/configuration.yml:/config/configuration.yml:ro
+      # rw on purpose: Authelia rewrites this file when you change your
+      # password from the profile page (file identity provider).
+      - ./authelia/auth_file.yml:/config/auth_file.yml
+      - ${DOCKERDIR}/authelia/data:/config/data
+
   portainer:
     image: portainer/portainer-ce:latest
     container_name: portainer
@@ -281,7 +306,9 @@ services:
     networks:
       - proxy-net
     ports:
-      - "127.0.0.1:8888:8080"
+      - "127.0.0.1:8888:8080"      # host agent (Hermes); unchanged
+      - "192.168.4.51:8888:8080"   # LAN browser access (wlp130s0); drop once the NPM host + Authelia are in front
+      - "192.168.1.100:8888:8080"  # second NIC (enx000ec67d6484); drop this line if that network isn't fully trusted
     volumes:
       - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
 
