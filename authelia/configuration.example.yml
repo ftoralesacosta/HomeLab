@@ -47,3 +47,41 @@ access_control:
   rules:
     - domain: "auth.ftoralesacosta.me"
       policy: one_factor
+
+# OIDC provider (SSO for apps that support OpenID Connect, e.g. Open WebUI).
+# Generate with the authelia image:
+#   authelia crypto rand --length 64 --charset alphanumeric        # hmac_secret, client secret
+#   authelia crypto hash generate pbkdf2 --variant sha512 --password '<client secret>'   # client_secret digest
+#   authelia crypto pair rsa generate --bits 2048 --directory .     # private.pem for jwks
+identity_providers:
+  oidc:
+    hmac_secret: 'REPLACE_ME_64_random_chars'
+    jwks:
+      - key_id: 'main'
+        algorithm: 'RS256'
+        use: 'sig'
+        key: |
+          -----BEGIN PRIVATE KEY-----
+          REPLACE_ME
+          -----END PRIVATE KEY-----
+    # Put the user claims in the ID token too (4.39 serves them only via userinfo by default).
+    claims_policies:
+      default:
+        id_token: ['email', 'email_verified', 'name', 'preferred_username', 'groups']
+    clients:
+      # Open WebUI: plaintext secret goes in /opt/open-webui/.env as OAUTH_CLIENT_SECRET.
+      - client_id: 'open-webui'
+        client_name: 'Open WebUI'
+        client_secret: '$pbkdf2-sha512$REPLACE_WITH_DIGEST'
+        public: false
+        authorization_policy: 'one_factor'
+        claims_policy: 'default'
+        require_pkce: false
+        redirect_uris:
+          - 'https://webui.ftoralesacosta.me/oauth/oidc/callback'
+        scopes: ['openid', 'profile', 'email', 'groups']
+        response_types: ['code']
+        grant_types: ['authorization_code']
+        access_token_signed_response_alg: 'none'
+        userinfo_signed_response_alg: 'none'
+        token_endpoint_auth_method: 'client_secret_basic'

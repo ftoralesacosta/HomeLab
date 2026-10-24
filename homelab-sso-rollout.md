@@ -169,3 +169,17 @@ docker logs --tail 20 authelia
   update that host's Forward Host (or give the machine a static IP).
 - Open `http://192.168.4.51:5006` to finish Actual's first-visit setup (server password),
   and `http://192.168.4.51:8888` to check the SearXNG UI on the LAN.
+
+## Update 2026-10-24 — Open WebUI on OIDC SSO (Tier A, first app)
+
+- Authelia `identity_providers.oidc` enabled (key + HMAC secret + client digest only in the
+  gitignored `authelia/configuration.yml`; placeholders in `configuration.example.yml`).
+  Discovery: `https://auth.ftoralesacosta.me/.well-known/openid-configuration`.
+- Client `open-webui`: policy `one_factor`, redirect `https://webui.ftoralesacosta.me/oauth/oidc/callback`.
+- Open WebUI (`/opt/open-webui/docker-compose.yml`, root-owned, not in this repo): OAuth env vars
+  added; plaintext client secret in `/opt/open-webui/.env` (`OAUTH_CLIENT_SECRET`).
+  `OAUTH_MERGE_ACCOUNTS_BY_EMAIL=true` links the existing `ftoralesacosta@gmail.com` account;
+  `ENABLE_OAUTH_SIGNUP=false` (no new accounts via SSO). Password login form still enabled.
+  Backups: `*.bak-20261024-preoidc` next to each edited file.
+- Next: once the SSO login is confirmed, optionally set `ENABLE_LOGIN_FORM=false` in Open WebUI;
+  consider `two_factor` (TOTP) for the client.
