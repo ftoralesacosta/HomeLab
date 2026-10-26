@@ -14,7 +14,7 @@ Verizon fiber ─► BPI-R4 router (OpenWrt) ─► LAN 192.168.4.0/22 ─► de
 |---|---|
 | Edge | `reverse-proxy` (Nginx Proxy Manager: 80/443, admin 81 LAN-only), `cloudflare-ddns`, `cloudflare-ddns-for-minecraft` |
 | Auth | `authelia` (https://auth.ftoralesacosta.me, image pinned to 4.39) |
-| AI | `open-webui` (https://webui.ftoralesacosta.me, host network, port 3000), `searxng` (LAN only) |
+| AI | `open-webui` (https://webui.ftoralesacosta.me, host network, port 3000; web search via SearXNG), `searxng` (LAN only) |
 | Media | `jellyfin`, `sonarr`, `radarr`, `prowlarr`, `bazarr`, `sabnzbd`, `qbittorrent` (via `vpn` = gluetun), `flaresolverr` |
 | Home | `homeassistant`, `homebridge` |
 | Other | `mc` (Minecraft), `actual` (Actual Budget), `portainer`, `website` |
@@ -97,9 +97,8 @@ The same pattern applies to any other variable: edit `.env`, then `docker compos
 | Public IP | dynamic; `cloudflare-ddns*` containers update `ftoralesacosta.me` and `mc.` within ~5 min |
 | Remote router access | SSH tunnel: `ssh -L 8443:192.168.4.1:443 fernando@ftoralesacosta.me`, then https://localhost:8443 |
 
-Hard-coded LAN addresses in this repo: SearXNG binds `192.168.4.51:8888` and `192.168.1.100:8888`
-(`192.168.1.100` = the server's cable to the router's management subnet; if that address is
-removed, delete that port line or the container will not start). NPM host `ha` → `192.168.4.51:8123`.
+Hard-coded LAN addresses in this repo: SearXNG binds `127.0.0.1:8888` (Open WebUI web search,
+Hermes) and `192.168.4.51:8888` (LAN browser access). NPM host `ha` → `192.168.4.51:8123`.
 
 Router internals (GPON stick setup, patches, recovery) are documented outside this repo in
 `~/bpi-r4-onu/`.

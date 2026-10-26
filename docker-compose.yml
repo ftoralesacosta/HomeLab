@@ -308,7 +308,6 @@ services:
     ports:
       - "127.0.0.1:8888:8080"      # host agent (Hermes); unchanged
       - "192.168.4.51:8888:8080"   # LAN browser access (wlp130s0); drop once the NPM host + Authelia are in front
-      - "192.168.1.100:8888:8080"  # second NIC (enx000ec67d6484); drop this line if that network isn't fully trusted
     volumes:
       - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
 
@@ -340,6 +339,11 @@ services:
       # Backends: CoreWeave (W&B Inference) + the local Hermes agent API
       - OPENAI_API_BASE_URLS=${COREWEAVE_API_BASE};http://127.0.0.1:8642/v1
       - OPENAI_API_KEYS=${COREWEAVE_API_KEY};${HERMES_API_KEY}
+      # Web search via the local SearXNG (toggle in the chat box)
+      - ENABLE_WEB_SEARCH=true
+      - WEB_SEARCH_ENGINE=searxng
+      - SEARXNG_QUERY_URL=http://127.0.0.1:8888/search?q=<query>
+      - WEB_SEARCH_RESULT_COUNT=5
       # SSO via Authelia (OIDC)
       - WEBUI_URL=https://webui.ftoralesacosta.me
       - OAUTH_PROVIDER_NAME=Authelia
