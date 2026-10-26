@@ -1,0 +1,19 @@
+#!/bin/sh /etc/rc.common
+# Keep in-band auto-negotiation OFF on the GPON stick port (sfp-lan).
+# The iSzo/ODI stick runs "SGMII Force" (LAN_SDS_MODE=7); the MediaTek PCS only links
+# with it at 1000base-x when AN is disabled. phylink re-enables AN whenever the module
+# is (re)detected, so we re-apply it in a slow loop. NOTE: "ethtool -s sfp-lan autoneg off"
+# must be used WITHOUT speed/duplex (those return EINVAL on this kernel).
+START=99
+USE_PROCD=1
+PORT=sfp-lan
+
+start_service() {
+	procd_open_instance
+	procd_set_param command /bin/sh -c "while true; do \
+		if [ -e /sys/class/net/$PORT ] && ethtool $PORT 2>/dev/null | grep -q 'Auto-negotiation: on'; then \
+			ethtool -s $PORT autoneg off && logger -t sfp-autoneg-off \"disabled autoneg on $PORT\"; \
+		fi; sleep 5; done"
+	procd_set_param respawn
+	procd_close_instance
+}

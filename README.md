@@ -90,7 +90,7 @@ The same pattern applies to any other variable: edit `.env`, then `docker compos
 
 | Item | Value |
 |---|---|
-| Router | Banana Pi BPI-R4, official OpenWrt 25.12, LAN gateway **192.168.4.1** (web UI http://192.168.4.1, LAN only) |
+| Router | Banana Pi BPI-R4, official OpenWrt 25.12, LAN gateway **192.168.4.1** (web UI http://192.168.4.1, LAN only); see [OpenWRT-BPI_R4/](OpenWRT-BPI_R4/README.md) |
 | Internet | Verizon Fios via a GPON SFP stick in the router (no Verizon ONT/router) |
 | Server | `debian` = **192.168.4.51** (DHCP reservation), Wi-Fi `wlp130s0` |
 | Port forwards → 192.168.4.51 | TCP 22 (SSH), 80 + 443 (Nginx Proxy Manager), 25565 (Minecraft) |
@@ -100,5 +100,4 @@ The same pattern applies to any other variable: edit `.env`, then `docker compos
 Hard-coded LAN addresses in this repo: SearXNG binds `127.0.0.1:8888` (Open WebUI web search,
 Hermes) and `192.168.4.51:8888` (LAN browser access). NPM host `ha` → `192.168.4.51:8123`.
 
-Router internals (GPON stick setup, patches, recovery) are documented outside this repo in
-`~/bpi-r4-onu/`.
+Router setup (OpenWrt, GPON fiber stick, patches, recovery): [OpenWRT-BPI_R4/](OpenWRT-BPI_R4/README.md).

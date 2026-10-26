@@ -1,8 +1,5 @@
 # Tracked template - copy to configuration.yml (gitignored) and fill in real secrets.
 #   openssl rand -base64 32   # for the storage encryption_key
-# Schema note (2026-10-20): written for the v4.38+ image that `latest` currently
-# resolves to. The newer v5-style keys (top-level `secret`, `identity_providers`,
-# `storage.type/path`, `totp.issuer_name`, `server` timeouts) are rejected by it.
 
 theme: auto
 

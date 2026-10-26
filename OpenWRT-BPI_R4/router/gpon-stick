@@ -1,0 +1,37 @@
+#!/bin/sh /etc/rc.common
+# GPON stick (iSzo LL-XS2510 / ODI DFP-34X, RTL9601D) support on the SFP port sfp-lan.
+#
+# 1) autoneg: the stick's LAN SerDes ends up in "SGMII Force"; the MediaTek PCS only links
+#    with it at 1000base-x with in-band autoneg OFF. phylink re-enables AN whenever the
+#    module is (re)detected, so re-apply it. Use "ethtool -s sfp-lan autoneg off" WITHOUT
+#    speed/duplex (those return EINVAL on this kernel).
+# 2) keepalive: the stick's web server (boa) runs a hidden watchdog: it resets the RX packet
+#    counter on its LAN port and, if no frames arrive from the host for a while, cycles the
+#    SerDes mode (1/3/4/7) = link flaps every ~2 min. One ping per second prevents it.
+#
+# Stick management IP: 192.168.2.1 (router has 192.168.2.254 on br-lan, or on the "onu"
+# interface once the stick is the WAN). Requires the patched sfp.ko (ignores LOS for
+# "OEM / XPON-Stick") so the link comes up without fiber.
+START=99
+USE_PROCD=1
+PORT=sfp-lan
+STICK=192.168.2.1
+
+start_service() {
+	procd_open_instance autoneg
+	procd_set_param command /bin/sh -c "while true; do \
+		if [ -e /sys/class/net/$PORT ] && ethtool $PORT 2>/dev/null | grep -q 'Auto-negotiation: on'; then \
+			ethtool -s $PORT autoneg off && logger -t gpon-stick \"disabled autoneg on $PORT\"; \
+		fi; sleep 5; done"
+	procd_set_param respawn
+	procd_close_instance
+
+	# keepalive skipped while /etc/gpon-stick.no-keepalive exists (fiber traffic keeps boa happy)
+	[ -e /etc/gpon-stick.no-keepalive ] && return 0
+	procd_open_instance keepalive
+	procd_set_param command /bin/ping -i 1 -q $STICK
+	procd_set_param respawn 3600 5 0
+	procd_set_param stdout 0
+	procd_set_param stderr 0
+	procd_close_instance
+}
