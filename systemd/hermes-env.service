@@ -1,0 +1,10 @@
+# Copies ONLY Hermes's secrets from /home/fernando/HomeLab/.env into a root-only file
+# that hermes-gateway.service loads. The hermes user cannot read ~/HomeLab/.env itself.
+[Unit]
+Description=Hermes: extract its secrets from ~/HomeLab/.env
+Before=hermes-gateway.service
+
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/bin/sh -c 'grep -E "^(COREWEAVE_API_KEY|HERMES_API_KEY)=" /home/fernando/HomeLab/.env | sed "s/^HERMES_API_KEY=/API_SERVER_KEY=/" > /run/hermes-gateway.env'

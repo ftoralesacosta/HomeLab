@@ -320,3 +320,38 @@ services:
       - ../ftoralesacosta.github.io:/usr/share/nginx/html:ro    
     networks:           
       - proxy-net  
+
+  # --- AI ---
+  # Open WebUI (moved here from /opt/open-webui on 2026-10-25). Data volume is the
+  # existing "open-webui_open-webui". Secrets come from .env.
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - open-webui:/app/backend/data
+    environment:
+      - HOST=0.0.0.0
+      - PORT=3000
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
+      - ENABLE_OLLAMA_API=false
+      - ENABLE_PERSISTENT_CONFIG=false
+      # Backends: CoreWeave (W&B Inference) + the local Hermes agent API
+      - OPENAI_API_BASE_URLS=${COREWEAVE_API_BASE};http://127.0.0.1:8642/v1
+      - OPENAI_API_KEYS=${COREWEAVE_API_KEY};${HERMES_API_KEY}
+      # SSO via Authelia (OIDC)
+      - WEBUI_URL=https://webui.ftoralesacosta.me
+      - OAUTH_PROVIDER_NAME=Authelia
+      - OPENID_PROVIDER_URL=https://auth.ftoralesacosta.me/.well-known/openid-configuration
+      - OPENID_REDIRECT_URI=https://webui.ftoralesacosta.me/oauth/oidc/callback
+      - OAUTH_CLIENT_ID=open-webui
+      - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET}
+      - OAUTH_SCOPES=openid email profile groups
+      - OAUTH_MERGE_ACCOUNTS_BY_EMAIL=true   # link Authelia login to the existing account (same email)
+      - ENABLE_OAUTH_SIGNUP=false            # no new accounts via SSO
+
+volumes:
+  open-webui:
+    external: true
+    name: open-webui_open-webui
