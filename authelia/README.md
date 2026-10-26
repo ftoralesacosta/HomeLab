@@ -19,22 +19,14 @@ Email (password reset, 2FA setup) is sent from Gmail; the app password is `GMAIL
 
 Current groups: `admin` (you), `family`. Friends get **no group** (no admin rights).
 
-Add a user:
-1. Hash a password (a random one is fine; the user sets their own with **Reset password**):
-   ```bash
-   docker run --rm ghcr.io/authelia/authelia:4.39 authelia crypto hash generate argon2 --password '<password>'
-   ```
-2. Append under `users:` in `auth_file.yml`:
-   ```yaml
-       username:
-           password: "$argon2id$..."
-           displayname: First Last
-           email: someone@example.com
-           groups: []
-           disabled: false
-   ```
-3. `docker restart authelia`
-4. Tell them: open the app → **Continue with Authelia** → **Reset password?** → enter their email.
+Add a user (one command; creates the account with a random password and restarts Authelia):
+```bash
+~/HomeLab/authelia/add-user.sh jane jane@example.com "Jane Doe"            # friend: no group
+~/HomeLab/authelia/add-user.sh --dry-run jane jane@example.com "Jane Doe"  # preview only
+```
+It prints the message to send them. They open the app → **Continue with Authelia** → **Reset password?**
+(username or email; link valid 30 min) → log in → accept the consent screen. Then approve them in
+Open WebUI: **Admin Panel → Users** → role *pending* → **user**.
 
 Disable a user: set `disabled: true`, restart. Authelia rewrites `auth_file.yml` in an expanded format when
 someone changes a password; that is expected.
