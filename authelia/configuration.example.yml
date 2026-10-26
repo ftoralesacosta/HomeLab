@@ -8,6 +8,7 @@ server:
 
 identity_validation:
   reset_password:
+    jwt_lifespan: 30m   # reset links stay valid 30 min (default 5 min)
     jwt_secret: "REPLACE_ME"
 
 session:
@@ -29,6 +30,10 @@ authentication_backend:
   # 4.38: backend is selected by which block is present; no 'type' key.
   file:
     path: /config/auth_file.yml
+    # log in / reset password with the username OR the email address
+    search:
+      email: true
+      case_insensitive: true
 
 notifier:
   smtp:
