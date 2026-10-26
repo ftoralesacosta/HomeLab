@@ -353,7 +353,9 @@ services:
       - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET}
       - OAUTH_SCOPES=openid email profile groups
       - OAUTH_MERGE_ACCOUNTS_BY_EMAIL=true   # link Authelia login to the existing account (same email)
-      - ENABLE_OAUTH_SIGNUP=false            # no new accounts via SSO
+      - ENABLE_OAUTH_SIGNUP=true             # Authelia users can sign up...
+      - DEFAULT_USER_ROLE=pending            # ...but an admin must approve them
+      - ENABLE_SIGNUP=false                  # no self-registration with a password (public internet)
 
 volumes:
   open-webui:
