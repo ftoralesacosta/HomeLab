@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# NOT IN USE YET: for when the server is cabled to the router (see setup-wifi.sh for the Wi-Fi-only setup).
+# NOT IN USE YET: run once the server is cabled to the router (BPI-R4 LAN port).
 # Make the cable to the router (enp129s0 -> BPI-R4 lan1) the server's main connection.
 #   Wired : 192.168.4.51 (same address as before: port forwards, SearXNG, docs unchanged)
 #   Wi-Fi : 192.168.4.52, backup only (lower-priority default route), power saving off
