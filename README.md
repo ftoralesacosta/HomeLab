@@ -24,7 +24,10 @@ Start / update: `docker compose up -d [service]` in this directory.
 Not in this compose file:
 - **Hermes agent**: systemd service `hermes-gateway` (user `hermes`, `/opt/hermes-agent`,
   API on 127.0.0.1:8642). Open WebUI uses it as a second model backend.
-- **Codex CLI**: `~/.codex/config.toml`, provider `coreweave` (reads `COREWEAVE_API_KEY`).
+- **Codex CLI**: `~/.codex/config.toml`, provider `coreweave` (reads `COREWEAVE_API_KEY`), default model DeepSeek V4.1-Flash,
+  `web_search = "disabled"` (CoreWeave rejects Codex's built-in web search). Other models: `codex -p glm|glmflash|qwen|gemma`
+  (profiles in `~/.codex/<name>.config.toml`); switch mid-conversation: `codex resume --last -p <name>`.
+  Do not pick models in Codex's `/model` menu (OpenAI-only list).
 
 ---
 
@@ -63,7 +66,7 @@ Other secret files (gitignored, real values only on the server):
    `curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer <key>" https://api.inference.wandb.ai/v1/models` → `200`.
 2. `cd ~/HomeLab && docker compose up -d open-webui`
 3. `sudo systemctl restart hermes-gateway`
-4. Open a new shell (Codex).
+4. Codex: quit it, run `pkill -f app-server-daemon` (its background process keeps the old key), open a new shell, start `codex`.
 
 The same pattern applies to any other variable: edit `.env`, then `docker compose up -d <service>`
 (and restart `hermes-gateway` if it is `HERMES_API_KEY`).
