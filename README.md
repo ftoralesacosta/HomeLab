@@ -24,10 +24,8 @@ Start / update: `docker compose up -d [service]` in this directory.
 Not in this compose file:
 - **Hermes agent**: systemd service `hermes-gateway` (user `hermes`, `/opt/hermes-agent`,
   API on 127.0.0.1:8642). Open WebUI uses it as a second model backend.
-- **Codex CLI**: `~/.codex/config.toml`, provider `coreweave` (reads `COREWEAVE_API_KEY`), default model DeepSeek V4.1-Flash,
-  `web_search = "disabled"` (CoreWeave rejects Codex's built-in web search). Other models: `codex -p glm|glmflash|qwen|gemma`
-  (profiles in `~/.codex/<name>.config.toml`); switch mid-conversation: `codex resume --last -p <name>`.
-  Do not pick models in Codex's `/model` menu (OpenAI-only list).
+- **Codex CLI**: uses CoreWeave (no OpenAI account). `/model` lists our five CoreWeave models; also
+  `codex -p deepseek|glm|glmflash|qwen|gemma`. Setup, caveats, how to add models: [codex/README.md](codex/README.md).
 
 ---
 
