@@ -17,7 +17,7 @@ Verizon fiber ─► BPI-R4 router (OpenWrt) ─► LAN 192.168.4.0/22 ─► de
 | AI | `open-webui` (https://webui.ftoralesacosta.me, host network, port 3000; web search via SearXNG), `searxng` (LAN only) |
 | Media | `jellyfin`, `sonarr`, `radarr`, `prowlarr`, `bazarr`, `sabnzbd`, `qbittorrent` (via `vpn` = gluetun), `flaresolverr` |
 | Home | `homeassistant`, `homebridge` |
-| Other | `mc` (Minecraft), `actual` (Actual Budget), `portainer`, `website` |
+| Other | `mc` (Minecraft), `actual` (Actual Budget), `website` |
 
 Start / update: `docker compose up -d [service]` in this directory.
 
@@ -80,9 +80,12 @@ The same pattern applies to any other variable: edit `.env`, then `docker compos
   form is still enabled (`ENABLE_LOGIN_FORM=false` would hide it).
 - Adding an OIDC app: add a client under `identity_providers.oidc.clients` in
   `authelia/configuration.yml` (template in `configuration.example.yml`), restart `authelia`.
-- **Jellyfin is intentionally not behind the Authelia gate**: the TV/phone apps (Swiftfin, etc.)
-  cannot do a browser login. Planned: Jellyfin SSO plugin (OIDC) for the web login only; apps keep
-  Jellyfin logins / Quick Connect.
+- **Authelia gate** (NPM host → Advanced: `include /snippets/authelia.conf;`, file
+  `nginx-proxy-manager/snippets/authelia.conf`): `nginx.` and `ha.` (group `admin` only; HA `/api/` and
+  `/auth/token` bypass so the companion app works) and `jellyfin.` (any Authelia user). Who may pass is set by
+  `access_control` in `authelia/configuration.yml`.
+- **Jellyfin on the TV/phone apps**: use the internal-only address `http://192.168.4.51:8443`
+  (`jellyfin-internal-proxy` → `jellyfin:8096`); apps cannot log in through Authelia. The public host is for browsers.
 - Plan and status of the wider rollout: [homelab-sso-rollout.md](homelab-sso-rollout.md).
 
 ---

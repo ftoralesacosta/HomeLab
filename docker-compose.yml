@@ -15,6 +15,7 @@ services:
     volumes:
       - ${DOCKERDIR}/nginx-proxy-manager/data:/data
       - ${DOCKERDIR}/nginx-proxy-manager/letsencrypt:/etc/letsencrypt
+      - ./nginx-proxy-manager/snippets:/snippets:ro   # Authelia gate snippet (read-only, outside /data)
     networks:
       - proxy-net
 
@@ -42,18 +43,6 @@ services:
       # password from the profile page (file identity provider).
       - ./authelia/auth_file.yml:/config/auth_file.yml
       - ${DOCKERDIR}/authelia/data:/config/data
-
-  portainer:
-    image: portainer/portainer-ce:latest
-    container_name: portainer
-    restart: always
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ${DOCKERDIR}/portainer/data:/data
-    networks:
-      - proxy-net
-    ports:
-      - 9000
 
   cloudflare-ddns:
     image: oznu/cloudflare-ddns:latest
@@ -105,14 +94,23 @@ services:
       - /home/fernando/HomeLab/HomeAssistant:/home/fernando/HomeLab/HomeAssistant
       - /etc/localtime:/etc/localtime:ro
 
+  jellyfin-internal-proxy:
+    image: nginx:stable-alpine
+    container_name: jellyfin-internal-proxy
+    restart: unless-stopped
+    networks:
+      - proxy-net
+    ports:
+      - '192.168.4.51:8443:8443'
+    volumes:
+      - ./jellyfin-internal-proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+
   jellyfin:
     image: jellyfin/jellyfin:latest
     container_name: jellyfin
     restart: unless-stopped
     networks:
       - proxy-net
-    ports:
-        - "8096:8096"
     group_add:
       - "110"
     devices:

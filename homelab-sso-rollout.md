@@ -129,6 +129,14 @@ Multi-user payoff: adding a family member is one entry in `auth_file.yml`; they 
 Authelia once and get through every gate (and, if done, every Tier A app provisions their
 account on first use). Enabling TOTP on the Authelia account flows through to all of them.
 
+**Jellyfin split path:**
+
+- Gate `jellyfin.ftoralesacosta.me` with the Authelia access list for browser access.
+- Keep native TV/phone clients on the dedicated internal-only proxy at `192.168.4.51:8443`
+  (`jellyfin-internal-proxy` → `jellyfin:8096`).
+- This avoids exposing an auth bypass on the public hostname while still supporting clients
+  that cannot perform a browser login.
+
 **Not gated (decided):**
 
 - `ftoralesacosta.me` (apex) — public portfolio site.
@@ -140,18 +148,25 @@ account on first use). Enabling TOTP on the Authelia account flows through to al
 
 ## 5 — Final-step checklist (NPM + Cloudflare, do after LAN testing)
 
+Stock NPM Access Lists only provide Basic Auth and IP rules, not a native Authelia
+method/server field. Use the reusable include in
+`nginx-proxy-manager/snippets/authelia.conf` instead.
+
 1. Cloudflare: CNAMEs (proxied) — `auth`, `search`, `budget` → `ftoralesacosta.me`.
-2. NPM → Access Lists: create `authelia` (method: Authelia, server
-   `https://auth.ftoralesacosta.me`).
-3. NPM → Proxy Host: add `auth.ftoralesacosta.me` → `authelia:9091` (SSL automation,
+2. NPM → Proxy Host: add `auth.ftoralesacosta.me` → `authelia:9091` (SSL automation,
    force SSL) — do this first, the other hosts depend on it working.
-4. NPM → Proxy Host: add `search.ftoralesacosta.me` → `searxng:8080` (SSL automation,
+3. NPM → Proxy Host: add `search.ftoralesacosta.me` → `searxng:8080` (SSL automation,
    force SSL) — with `server.limiter: true` already enabled in settings.yml.
-5. NPM → Proxy Host: add `budget.ftoralesacosta.me` → `actual-budget:5006` (SSL
-   automation, force SSL) — no access list.
-6. In the existing hosts' settings, select access list `authelia`:
-   - jellyfin, ha, webui, portainer, nginx (the NPM UI itself).
-   (Arr stack hosts are intentionally left without the access list.)
+4. NPM → Proxy Host: add `budget.ftoralesacosta.me` → `actual-budget:5006` (SSL
+   automation, force SSL) — no Authelia gate.
+5. For each gated host, open the host’s **Advanced** tab and add:
+   `include /snippets/authelia.conf;`
+   - `nginx.ftoralesacosta.me`
+   - `ha.ftoralesacosta.me`
+   - `webui.ftoralesacosta.me`
+   - `jellyfin.ftoralesacosta.me`
+6. Do **not** add the include to `auth.ftoralesacosta.me`, `budget`, the public site,
+   or the arr stack.
 7. Smoke test each gated host: expect a bounce to `auth.ftoralesacosta.me`, then the app.
 
 ## 6 — Immediate next steps
@@ -183,3 +198,20 @@ docker logs --tail 20 authelia
   Backups: `*.bak-20261024-preoidc` next to each edited file.
 - Next: once the SSO login is confirmed, optionally set `ENABLE_LOGIN_FORM=false` in Open WebUI;
   consider `two_factor` (TOTP) for the client.
+
+## 7 — Current action checklist
+
+Already done in the repo:
+
+1. Added the internal-only Jellyfin listener at `192.168.4.51:8443`.
+2. Removed Jellyfin’s broad `8096:8096` host-port exposure.
+3. Added a dedicated `jellyfin-internal-proxy` container for the Apple TV path.
+
+Do these next, in order:
+
+1. Run `cd ~/HomeLab && docker compose up -d reverse-proxy jellyfin`.
+2. In NPM, open `nginx.ftoralesacosta.me` → **Advanced** and add `include /snippets/authelia.conf;`
+3. Confirm the NPM UI still works, then repeat for `ha.ftoralesacosta.me`.
+4. Add the same include to `jellyfin.ftoralesacosta.me` last.
+6. On Apple TV, use `http://192.168.4.51:8443` and sign in with the normal Jellyfin account.
+7. Optional hardening: once the gated NPM host works, restrict or remove the direct `81:81` port mapping.
