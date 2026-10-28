@@ -12,7 +12,7 @@ Verizon fiber ─► BPI-R4 router (OpenWrt) ─► LAN 192.168.4.0/22 ─► de
 
 | Area | Services |
 |---|---|
-| Edge | `reverse-proxy` (Nginx Proxy Manager: 80/443, admin 81 LAN-only), `cloudflare-ddns`, `cloudflare-ddns-for-minecraft` |
+| Edge | `reverse-proxy` (Nginx Proxy Manager: 80/443; admin UI **not public**: http://192.168.4.51:81 at home, away `ssh -L 8181:localhost:81 fernando@ftoralesacosta.me` → http://localhost:8181), `cloudflare-ddns`, `cloudflare-ddns-for-minecraft` |
 | Auth | `authelia` (https://auth.ftoralesacosta.me, image pinned to 4.39) |
 | AI | `open-webui` (https://webui.ftoralesacosta.me, host network, port 3000; web search via SearXNG), `searxng` (LAN only) |
 | Media | `jellyfin`, `sonarr`, `radarr`, `prowlarr`, `bazarr`, `sabnzbd`, `qbittorrent` (via `vpn` = gluetun), `flaresolverr` |
@@ -81,7 +81,7 @@ The same pattern applies to any other variable: edit `.env`, then `docker compos
 - Adding an OIDC app: add a client under `identity_providers.oidc.clients` in
   `authelia/configuration.yml` (template in `configuration.example.yml`), restart `authelia`.
 - **Authelia gate** (NPM host → Advanced: `include /snippets/authelia.conf;`, file
-  `nginx-proxy-manager/snippets/authelia.conf`): `nginx.` and `ha.` (group `admin` only; HA `/api/` and
+  `nginx-proxy-manager/snippets/authelia.conf`): `ha.` (group `admin` only; HA `/api/` and
   `/auth/token` bypass so the companion app works) and `jellyfin.` (any Authelia user). Who may pass is set by
   `access_control` in `authelia/configuration.yml`.
 - **Jellyfin on the TV/phone apps**: use the internal-only address `http://192.168.4.51:8443`

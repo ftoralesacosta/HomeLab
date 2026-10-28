@@ -407,3 +407,10 @@ NPM admin `:81` OK; `nginx -t` OK, no start-up errors.
 
 Still to do by hand: Cloudflare DNS record `portainer` can be deleted (now Cloudflare 525);
 Apple TV Swiftfin server address → `http://192.168.4.51:8443`.
+
+### Update 2026-10-28 09:00 — NPM admin UI no longer public
+NPM has no SSO, so behind the gate it meant two logins. Decision: no public host at all.
+NPM host 7 (`nginx.ftoralesacosta.me`) soft-deleted (conf in `/data/nginx/deleted_hosts/`, DB backup
+`/data/database.sqlite.bak-20261028-nonginx`); Authelia admin rule now covers `ha.` only.
+Access: home `http://192.168.4.51:81`; away `ssh -L 8181:localhost:81 fernando@ftoralesacosta.me` → `http://localhost:8181`.
+Cloudflare DNS record `nginx` can be deleted.
