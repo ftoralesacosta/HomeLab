@@ -352,6 +352,8 @@ services:
       - OAUTH_SCOPES=openid email profile groups
       - OAUTH_MERGE_ACCOUNTS_BY_EMAIL=true   # link Authelia login to the existing account (same email)
       - ENABLE_OAUTH_SIGNUP=true             # Authelia users can sign up...
+      - OAUTH_AUTO_REDIRECT=true             # go straight to the Authelia login...
+      - ENABLE_LOGIN_FORM=false              # ...no password form (emergency: /auth?form=1)
       - DEFAULT_USER_ROLE=pending            # ...but an admin must approve them
       - ENABLE_SIGNUP=false                  # no self-registration with a password (public internet)
 

@@ -75,9 +75,10 @@ The same pattern applies to any other variable: edit `.env`, then `docker compos
 
 - Login page: https://auth.ftoralesacosta.me (users in `authelia/auth_file.yml`, see
   [authelia/README.md](authelia/README.md)). Session cookie covers all `*.ftoralesacosta.me`.
-- **Open WebUI** uses Authelia as its OIDC provider ("Continue with Authelia"). Accounts are
-  linked by email; new accounts via SSO are disabled (`ENABLE_OAUTH_SIGNUP=false`). The password
-  form is still enabled (`ENABLE_LOGIN_FORM=false` would hide it).
+- **Open WebUI** uses Authelia as its OIDC provider and redirects straight to the Authelia login
+  (`OAUTH_AUTO_REDIRECT=true`, `ENABLE_LOGIN_FORM=false`). Accounts are linked by email; new Authelia users
+  get a *pending* account that an admin approves. **If Authelia is down**: password login still works at
+  https://webui.ftoralesacosta.me/auth?form=1 (Open WebUI email + password).
 - Adding an OIDC app: add a client under `identity_providers.oidc.clients` in
   `authelia/configuration.yml` (template in `configuration.example.yml`), restart `authelia`.
 - **Authelia gate** (NPM host → Advanced: `include /snippets/authelia.conf;`, file
