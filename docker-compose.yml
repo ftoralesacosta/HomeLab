@@ -177,11 +177,11 @@ services:
       OPENAI_BASE_URL: ${COREWEAVE_API_BASE}
       OPENAI_API_KEY: ${COREWEAVE_API_KEY}
       OPENAI_MODEL: zai-org/GLM-5.3-Flash
-      # dryRun = log only, change nothing. Remove it once the suggestions look right.
-      FEATURES: '["classifyOnStartup", "syncAccountsBeforeClassify", "dryRun"]'
+      # LIVE since 2026-11-02 (add "dryRun" back to only log suggestions)
+      FEATURES: '["classifyOnStartup", "syncAccountsBeforeClassify"]'
       # daily-fixups.js (run daily 06:45 by fernando's crontab): links card payments/internal transfers and
       # pairs exact-amount refunds. Plain code, no AI. Log: actual-ai/logs/daily-fixups.jsonl
-      FIXUPS_DRY_RUN: "true"                         # "false" = apply; every decision is logged either way
+      FIXUPS_DRY_RUN: "false"                        # LIVE since 2026-11-02 ("true" = log only); every decision is logged
     volumes:
       - ./actual-ai/scripts:/scripts:ro
       - ./actual-ai/logs:/logs                       # daily-fixups.jsonl (gitignored: financial data)
