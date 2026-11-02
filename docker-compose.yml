@@ -156,6 +156,35 @@ services:
       # Holds server-files/ (accounts, SimpleFIN keys) and user-files/ (budgets).
       - ${DOCKERDIR}/actual-budget/data:/data
 
+  # AI categorization for Actual: once a day, bank-syncs (SimpleFIN) and asks an LLM to set the
+  # category of still-uncategorized transactions. Marks them "#actual-ai" in Notes for review.
+  # It does NOT create rules (Actual only learns rules from categories you set yourself).
+  actual-ai:
+    image: docker.io/sakowicz/actual-ai:3.0.4
+    container_name: actual-ai
+    restart: unless-stopped
+    networks:
+      - proxy-net
+    depends_on:
+      - actual
+    environment:
+      ACTUAL_SERVER_URL: http://actual-budget:5006
+      ACTUAL_PASSWORD: ${ACTUAL_PASSWORD}
+      ACTUAL_BUDGET_ID: ${ACTUAL_BUDGET_ID}          # Actual: Settings -> Show advanced settings -> Sync ID
+      CLASSIFICATION_SCHEDULE_CRON: "0 6 * * *"      # daily 06:00
+      TZ: America/New_York
+      LLM_PROVIDER: openai                           # = any OpenAI-compatible API (CoreWeave)
+      OPENAI_BASE_URL: ${COREWEAVE_API_BASE}
+      OPENAI_API_KEY: ${COREWEAVE_API_KEY}
+      OPENAI_MODEL: zai-org/GLM-5.3-Flash
+      # dryRun = log only, change nothing. Remove it once the suggestions look right.
+      FEATURES: '["classifyOnStartup", "syncAccountsBeforeClassify", "dryRun"]'
+      # refund-match.js (run daily 06:45 by fernando's crontab): pairs exact-amount refunds with purchases
+      REFUND_DRY_RUN: "true"                         # "false" = apply; every decision is logged either way
+    volumes:
+      - ./actual-ai/scripts:/scripts:ro
+      - ./actual-ai/logs:/logs                       # refund-matches.jsonl (gitignored: financial data)
+
   # --- VPN and Torrent Services ---
   vpn:
     image: ghcr.io/qdm12/gluetun:latest
