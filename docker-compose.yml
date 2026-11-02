@@ -179,11 +179,12 @@ services:
       OPENAI_MODEL: zai-org/GLM-5.3-Flash
       # dryRun = log only, change nothing. Remove it once the suggestions look right.
       FEATURES: '["classifyOnStartup", "syncAccountsBeforeClassify", "dryRun"]'
-      # refund-match.js (run daily 06:45 by fernando's crontab): pairs exact-amount refunds with purchases
-      REFUND_DRY_RUN: "true"                         # "false" = apply; every decision is logged either way
+      # daily-fixups.js (run daily 06:45 by fernando's crontab): links card payments/internal transfers and
+      # pairs exact-amount refunds. Plain code, no AI. Log: actual-ai/logs/daily-fixups.jsonl
+      FIXUPS_DRY_RUN: "true"                         # "false" = apply; every decision is logged either way
     volumes:
       - ./actual-ai/scripts:/scripts:ro
-      - ./actual-ai/logs:/logs                       # refund-matches.jsonl (gitignored: financial data)
+      - ./actual-ai/logs:/logs                       # daily-fixups.jsonl (gitignored: financial data)
 
   # --- VPN and Torrent Services ---
   vpn:
