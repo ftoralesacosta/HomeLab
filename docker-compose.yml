@@ -178,7 +178,7 @@ services:
       OPENAI_API_KEY: ${COREWEAVE_API_KEY}
       OPENAI_MODEL: zai-org/GLM-5.3-Flash
       # LIVE since 2026-11-02 (add "dryRun" back to only log suggestions)
-      FEATURES: '["classifyOnStartup", "syncAccountsBeforeClassify"]'
+      FEATURES: '["classifyOnStartup"]'   # TEMP: bank sync off while the mortgage connection needs attention
       # daily-fixups.js (run daily 06:45 by fernando's crontab): links card payments/internal transfers and
       # pairs exact-amount refunds. Plain code, no AI. Log: actual-ai/logs/daily-fixups.jsonl
       FIXUPS_DRY_RUN: "false"                        # LIVE since 2026-11-02 ("true" = log only); every decision is logged
