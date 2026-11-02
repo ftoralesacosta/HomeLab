@@ -156,8 +156,8 @@ services:
       # Holds server-files/ (accounts, SimpleFIN keys) and user-files/ (budgets).
       - ${DOCKERDIR}/actual-budget/data:/data
 
-  # AI categorization for Actual: once a day, bank-syncs (SimpleFIN) and asks an LLM to set the
-  # category of still-uncategorized transactions. Marks them "#actual-ai" in Notes for review.
+  # AI categorization for Actual: once a day (06:00) asks an LLM to set the category of
+  # still-uncategorized transactions. Marks them "#actual-ai" in Notes for review.
   # It does NOT create rules (Actual only learns rules from categories you set yourself).
   actual-ai:
     image: docker.io/sakowicz/actual-ai:3.0.4
@@ -178,7 +178,9 @@ services:
       OPENAI_API_KEY: ${COREWEAVE_API_KEY}
       OPENAI_MODEL: zai-org/GLM-5.3-Flash
       # LIVE since 2026-11-02 (add "dryRun" back to only log suggestions)
-      FEATURES: '["classifyOnStartup"]'   # TEMP: bank sync off while the mortgage connection needs attention
+      # Bank Sync is NOT done here: actual-ai hangs when one bank connection fails. bank-sync.js (05:45, cron)
+      # syncs each account separately and skips broken ones.
+      FEATURES: '["classifyOnStartup"]'
       # daily-fixups.js (run daily 06:45 by fernando's crontab): links card payments/internal transfers and
       # pairs exact-amount refunds. Plain code, no AI. Log: actual-ai/logs/daily-fixups.jsonl
       FIXUPS_DRY_RUN: "false"                        # LIVE since 2026-11-02 ("true" = log only); every decision is logged
