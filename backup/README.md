@@ -20,7 +20,7 @@ Google only ever receives encrypted chunks. Without `RESTIC_PASSWORD` the backup
 
 | Included | Excluded (rebuildable) |
 |---|---|
-| Actual Budget, Sonarr, Radarr, Prowlarr, Bazarr, SABnzbd, qBittorrent, Jellyfin (DB, users, watch state, config), NPM (+ certs), Home Assistant, Homebridge, Authelia, Open WebUI, Hermes | media files, Jellyfin metadata/trickplay images, logs, caches, Hermes tools |
+| Actual Budget, Sonarr, Radarr, Prowlarr, Bazarr, SABnzbd, qBittorrent, Jellyfin (DB, users, watch state, config), NPM (+ certs), Home Assistant, Homebridge, Authelia, Open WebUI, Hermes, Minecraft worlds + server config (flushed via rcon `save-off`/`save-all`, not paused) | media files, Jellyfin metadata/trickplay images, logs, caches, Hermes tools, Minecraft server jars/libraries, JVM core dumps, crash reports |
 
 ## Secrets (`~/HomeLab/.env`)
 | Variable | Value |

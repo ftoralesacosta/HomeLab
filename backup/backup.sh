@@ -34,15 +34,17 @@ log() { echo "$(date '+%F %T') $*" | tee -a "$LOG"; }
 
 PAUSED=()
 unpause_all() { for c in "${PAUSED[@]}"; do docker unpause "$c" >/dev/null 2>&1; done; PAUSED=(); }
-cleanup() { unpause_all; rm -f "${ENVF:-}"; }
+MC_SAVE_OFF=0
+mc_save_on() { [ $MC_SAVE_OFF = 1 ] && docker exec minecraft-server rcon-cli save-on >/dev/null 2>&1; MC_SAVE_OFF=0; }
+cleanup() { unpause_all; mc_save_on; rm -f "${ENVF:-}"; }
 trap cleanup EXIT
 
 # ---------- 1. stage ----------
 # stage <name> <container-to-pause or ""> <source dir> [exclude patterns relative to source, e.g. ./log]
 stage() {
   local name=$1 ctr=$2 src=$3; shift 3
-  local ex=() e
-  for e in "$@"; do ex+=(--exclude="$e"); done
+  local ex=(--no-wildcards-match-slash) e   # so './*.jar' matches top level only
+  for e in "$@"; do ex+=("--exclude='$e'"); done
   if [ ! -d "$src" ] && ! docker run --rm -v "$(dirname "$src")":/p:ro alpine:3 test -d "/p/$(basename "$src")"; then
     log "WARN  $name: $src not found, skipped"; return; fi
   if [ -n "$ctr" ] && docker ps --format '{{.Names}}' | grep -qx "$ctr"; then docker pause "$ctr" >/dev/null && PAUSED+=("$ctr"); fi
@@ -70,6 +72,16 @@ do_stage() {
   stage authelia       authelia        "$V/authelia"
   stage open-webui     open-webui      /var/lib/docker/volumes/open-webui_open-webui/_data  ./cache
   stage hermes         ""              /var/lib/hermes/.hermes ./tools ./cache ./logs ./audio_cache ./image_cache
+  # Minecraft: not paused (players would time out); flush the world to disk and stop autosave while copying.
+  # Excludes are rebuildable (server jars/libraries) or junk (JVM core dumps, crash reports, old tarballs).
+  if docker ps --format '{{.Names}}' | grep -qx minecraft-server \
+     && docker exec minecraft-server rcon-cli save-off >/dev/null 2>&1; then
+    MC_SAVE_OFF=1
+    docker exec minecraft-server rcon-cli save-all flush >/dev/null 2>&1; sleep 5
+  else log "WARN  minecraft: rcon save-off failed, copying without flush"; fi
+  stage minecraft      ""              "$V/minecraft-server_SNAPSHOT/data" ./core ./crash-reports ./logs './hs_err_pid*' './*.jar' ./libraries ./versions ./.cache
+  mc_save_on
+  stage minecraft-1.17.1 ""            "$V/minecraft-server_1.17.1/data" ./core ./crash-reports ./logs './*.jar' ./libraries ./versions
 }
 
 # ---------- 2. export readable JSON ----------
