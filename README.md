@@ -106,3 +106,5 @@ Hard-coded LAN addresses in this repo: SearXNG binds `127.0.0.1:8888` (Open WebU
 Hermes) and `192.168.4.51:8888` (LAN browser access). NPM host `ha` → `192.168.4.51:8123`.
 
 Router setup (OpenWrt, GPON fiber stick, patches, recovery): [OpenWRT-BPI_R4/](OpenWRT-BPI_R4/README.md).
+
+Backups (nightly restic → 2nd NVMe + Google Drive, restore steps): [backup/README.md](backup/README.md).
