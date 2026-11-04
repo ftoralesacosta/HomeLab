@@ -5,14 +5,14 @@ One plain bash script run nightly by cron, with no daemons. [`backup.sh`](backup
 | Copy | Where | Purpose |
 |---|---|---|
 | Local | `/mnt/data/backups/restic` (2nd NVMe) | fast restores, survives a dead system disk |
-| Offsite | Google Drive `homelab-restic` (via rclone) | survives losing the whole server |
+| Offsite | Google Drive `homelab-backups` (via rclone) | survives losing the whole server |
 
 Google only ever receives encrypted chunks. Without `RESTIC_PASSWORD` the backups **cannot be read by anyone, including you**, so keep that password in your password manager.
 
 Last verified 2026-11-04: a **full** restore from Google Drive (18,819 files, 1.13 GiB, 87 s) matched staging and `~/HomeLab` with 0 differences. Re-test a restore every few months.
 
 > [!WARNING]
-> Lesson from 2026-11-03: with Alpine's packaged `rclone 1.66-DEV`, 4 uploads to Drive "succeeded" but never landed, and restic reported no error. Fixes: official rclone 1.75.2 + restic 0.19.1 in the [Dockerfile](Dockerfile); `restic check` after **every** run, so a silent loss now fails the run; and a fresh repo folder, `homelab-restic`. The old `homelab-backups` folder can only be deleted from the Drive web UI.
+> Lesson from 2026-11-03: with Alpine's packaged `rclone 1.66-DEV`, 4 uploads to Drive "succeeded" but never landed, and restic reported no error. Fixes: official rclone 1.75.2 + restic 0.19.1 in the [Dockerfile](Dockerfile); `restic check` after **every** run, so a silent loss now fails the run; and a fresh repo. The damaged one could only be deleted from the Drive web UI, because the backup app had lost write access to some of its files.
 
 ## What it does
 1. **Stage.** Each container is paused for about a second while its config folder is copied (GNU tar) into `/mnt/data/backups/staging/<app>`, so SQLite databases are consistent. A trap unpauses everything on exit.

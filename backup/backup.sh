@@ -10,7 +10,7 @@
 #  3. BACKUP  restic snapshot of staging + ~/HomeLab (incl. .env and other gitignored secrets)
 #             to TWO encrypted repositories:
 #               - local:   /mnt/data/backups/restic   (second NVMe, fast restores)
-#               - offsite: Google Drive  homelab-restic  (via rclone)
+#               - offsite: Google Drive  homelab-backups  (via rclone)
 #  4. PRUNE   keep 7 daily, 4 weekly, 12 monthly snapshots;  Sundays: integrity check
 #
 # Needs in ~/HomeLab/.env:  RESTIC_PASSWORD  (+ RCLONE_CONFIG_GDRIVE_* for the offsite copy)
@@ -26,7 +26,7 @@ V=/home/fernando/.volumes
 B=/mnt/data/backups
 STAGE=$B/staging
 LOCAL_REPO=/repo-local
-GDRIVE_REPO=rclone:gdrive:homelab-restic
+GDRIVE_REPO=rclone:gdrive:homelab-backups
 IMG=homelab-backup:restic
 LOGDIR=$HL/backup/logs; LOG=$LOGDIR/backup.log
 mkdir -p "$LOGDIR"
