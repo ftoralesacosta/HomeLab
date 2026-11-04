@@ -10,13 +10,14 @@
 #  3. BACKUP  restic snapshot of staging + ~/HomeLab (incl. .env and other gitignored secrets)
 #             to TWO encrypted repositories:
 #               - local:   /mnt/data/backups/restic   (second NVMe, fast restores)
-#               - offsite: Google Drive  homelab-backups/restic  (via rclone)
+#               - offsite: Google Drive  homelab-restic  (via rclone)
 #  4. PRUNE   keep 7 daily, 4 weekly, 12 monthly snapshots;  Sundays: integrity check
 #
 # Needs in ~/HomeLab/.env:  RESTIC_PASSWORD  (+ RCLONE_CONFIG_GDRIVE_* for the offsite copy)
 # Usage:  backup.sh            full run
 #         backup.sh --stage    only steps 1-2 (no restic)
 #         backup.sh --snapshots   list snapshots in both repos
+#         backup.sh --restic local|gdrive <restic args>   e.g. restore latest --target /restore (= host /tmp)
 # Log: ~/HomeLab/backup/logs/backup.log   Restore: see ~/HomeLab/backup/README.md
 # =============================================================================
 set -uo pipefail
@@ -25,7 +26,7 @@ V=/home/fernando/.volumes
 B=/mnt/data/backups
 STAGE=$B/staging
 LOCAL_REPO=/repo-local
-GDRIVE_REPO=rclone:gdrive:homelab-backups/restic
+GDRIVE_REPO=rclone:gdrive:homelab-restic
 IMG=homelab-backup:restic
 LOGDIR=$HL/backup/logs; LOG=$LOGDIR/backup.log
 mkdir -p "$LOGDIR"
@@ -157,13 +158,17 @@ backup_to() {  # backup_to <repo> <label>
   else log "ERROR backup -> $label"; FAIL=1; return; fi
   restic_run "$repo" forget --tag nightly --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --prune >>"$LOG" 2>&1 \
     && log "prune $label OK" || { log "ERROR prune $label"; FAIL=1; }
-  if [ "$(date +%u)" = 7 ]; then
-    restic_run "$repo" check --read-data-subset=10% >>"$LOG" 2>&1 && log "check $label OK" || { log "ERROR check $label"; FAIL=1; }
-  fi
+  # Every run: verify that every pack the index lists really exists (a listing, takes seconds).
+  # This is what caught Google Drive silently dropping uploads on 2026-11-03.
+  # Sundays: additionally download and verify 10% of the data.
+  local chk=(check); [ "$(date +%u)" = 7 ] && chk+=(--read-data-subset=10%)
+  restic_run "$repo" "${chk[@]}" >>"$LOG" 2>&1 && log "check $label OK" || { log "ERROR check $label - repository damaged, see log"; FAIL=1; }
 }
 
 case "${1:-}" in
   --stage) do_stage; do_export; exit $FAIL ;;
+  --restic) # any restic command against local|gdrive, e.g. --restic gdrive restore latest --target /restore  (/restore = host /tmp)
+           make_envfile; r=$LOCAL_REPO; [ "${2:-}" = gdrive ] && r=$GDRIVE_REPO; shift 2; restic_run "$r" "$@"; exit $? ;;
   --snapshots) make_envfile; restic_run "$LOCAL_REPO" snapshots
                grep -q '^RCLONE_CONFIG_GDRIVE_TOKEN=.' "$ENVF" && restic_run "$GDRIVE_REPO" snapshots; exit 0 ;;
 esac

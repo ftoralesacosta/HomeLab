@@ -5,11 +5,14 @@ One plain bash script run nightly by cron, with no daemons. [`backup.sh`](backup
 | Copy | Where | Purpose |
 |---|---|---|
 | Local | `/mnt/data/backups/restic` (2nd NVMe) | fast restores, survives a dead system disk |
-| Offsite | Google Drive `homelab-backups/restic` (via rclone) | survives losing the whole server |
+| Offsite | Google Drive `homelab-restic` (via rclone) | survives losing the whole server |
 
 Google only ever receives encrypted chunks. Without `RESTIC_PASSWORD` the backups **cannot be read by anyone, including you**, so keep that password in your password manager.
 
-Last verified 2026-11-03: a full run took about 3.5 minutes (1.13 GiB, stored as 730 MB), and restoring Actual, the Minecraft world, the exports and `.env` from **both** repos matched the originals byte for byte. Re-test a restore every few months.
+Last verified 2026-11-04: a **full** restore from Google Drive (18,819 files, 1.13 GiB, 87 s) matched staging and `~/HomeLab` with 0 differences. Re-test a restore every few months.
+
+> [!WARNING]
+> Lesson from 2026-11-03: with Alpine's packaged `rclone 1.66-DEV`, 4 uploads to Drive "succeeded" but never landed, and restic reported no error. Fixes: official rclone 1.75.2 + restic 0.19.1 in the [Dockerfile](Dockerfile); `restic check` after **every** run, so a silent loss now fails the run; and a fresh repo folder, `homelab-restic`. The old `homelab-backups` folder can only be deleted from the Drive web UI.
 
 ## What it does
 1. **Stage.** Each container is paused for about a second while its config folder is copied (GNU tar) into `/mnt/data/backups/staging/<app>`, so SQLite databases are consistent. A trap unpauses everything on exit.
@@ -18,7 +21,7 @@ Last verified 2026-11-03: a full run took about 3.5 minutes (1.13 GiB, stored as
    - full Sonarr/Radarr API dumps: series, movies, quality profiles, root folders, download clients; Prowlarr indexers
    - `actual-structure.json`: Actual Budget accounts, categories, payees, rules, schedules (no transactions; those live in the `actual-budget` staging copy)
 3. **restic backup** of `staging/` and the `~/HomeLab` repo, including the gitignored `.env` and local notes but not `.git`. This goes to both repos.
-4. **Retention:** 7 daily, 4 weekly, 12 monthly. On Sundays it also runs `restic check` on a 10% sample of the data.
+4. **Retention:** 7 daily, 4 weekly, 12 monthly. After every run, `restic check` confirms that every data file exists, in seconds. On Sundays it also downloads and verifies a 10% sample. Any failure sets `"ok": false` in `logs/last-status.json`.
 
 | Included | Excluded (rebuildable) |
 |---|---|
@@ -64,16 +67,85 @@ cat backup/logs/last-status.json; tail -50 backup/logs/backup.log
 Cron: `30 3 * * * /home/fernando/HomeLab/backup/backup.sh >> /home/fernando/HomeLab/backup/logs/cron.log 2>&1`
 
 ## Restore
-Shell helper (run from `~/HomeLab`):
+`backup.sh --restic local|gdrive <restic command>` runs any restic command with the secrets from `.env`. Inside the container `/restore` is the host's `/tmp`.
 ```bash
-R() { docker run --rm -it --env-file <(grep -E '^(RESTIC_PASSWORD|RCLONE_CONFIG_GDRIVE_[A-Z_]+)=' .env) \
-      -v /mnt/data/backups/restic:/repo-local -v /tmp/restore:/restore homelab-backup:restic "$@"; }
-R -r /repo-local snapshots                          # or: -r rclone:gdrive:homelab-backups/restic
-R -r /repo-local ls latest /data/staging/sonarr     # browse
-R -r /repo-local restore latest --include /data/staging/actual-budget --target /restore
+./backup/backup.sh --restic local snapshots                                  # or: gdrive
+./backup/backup.sh --restic local ls latest /data/staging/sonarr             # browse
+./backup/backup.sh --restic local restore latest --include /data/staging/actual-budget --target /restore
 ```
-Files land in `/tmp/restore/data/staging/<app>/`. To put one back: `docker stop <app>`, copy the files over `~/.volumes/<app>` (use a root helper container for root-owned files), then `docker start <app>`.
+Files land in `/tmp/data/staging/<app>/` (owned by root). To put one app back: `docker stop <app>`, then `sudo cp -a /tmp/data/staging/<app>/. <host path>/`, then `docker start <app>`.
 
-**New server from scratch:** install Docker and git, clone this repo, then `docker build -t homelab-backup:restic backup/`. Recreate `.env` with just the 4 variables above, restore `latest` from Google Drive, copy `data/homelab/.env` back, copy each `data/staging/<app>` to `~/.volumes/<app>`, and run `docker compose up -d`.
+| Staging folder | Host path |
+|---|---|
+| `actual-budget` | `~/.volumes/actual-budget/data` |
+| `sonarr` / `radarr` / `prowlarr` | `~/.volumes/<app>/config` |
+| `bazarr`, `sabnzbd`, `qbittorrent`, `nginx-proxy-manager`, `home-assistant`, `homebridge`, `authelia` | `~/.volumes/<app>` |
+| `jellyfin` | `~/.volumes/jellyfin/config` |
+| `open-webui` | docker volume `open-webui_open-webui` (`/var/lib/docker/volumes/open-webui_open-webui/_data`) |
+| `hermes` | `/var/lib/hermes/.hermes` |
+| `minecraft` / `minecraft-1.17.1` | `~/.volumes/minecraft-server_SNAPSHOT/data` / `~/.volumes/minecraft-server_1.17.1/data` |
 
-**New media drive:** the restored Sonarr/Radarr still know every show and movie. Point the root folders at the new drive, then run *Wanted → Missing → Search All* in each. If the *arr configs are lost too, re-add titles from `redownload-*.json` (each entry has its tvdb/tmdb ID) through the API or by hand.
+### Roll the Minecraft world back to an earlier day
+Every snapshot contains the world, so the retention above (7 daily, 4 weekly, 12 monthly) is its version history. Only changed chunks are stored, so this costs a few MB per day.
+```bash
+./backup/backup.sh --restic local snapshots      # pick an ID by date (times are UTC)
+./backup/backup.sh --restic local restore <ID> --include /data/staging/minecraft/Fun4All --target /restore
+docker stop minecraft-server
+sudo mv ~/.volumes/minecraft-server_SNAPSHOT/data/Fun4All /tmp/Fun4All.before-rollback   # keep current, just in case
+sudo cp -a /tmp/data/staging/minecraft/Fun4All ~/.volumes/minecraft-server_SNAPSHOT/data/
+docker start minecraft-server
+```
+
+## Disaster recovery: re-downloading all media
+Media files aren't backed up; they're too big and they're replaceable. Instead, the backup holds everything needed to re-download them automatically:
+- **Sonarr/Radarr configs**: every show and movie, quality profiles, which seasons you want
+- **Prowlarr**: indexers and their API keys
+- **SABnzbd/qBittorrent**: Usenet provider login and torrent client settings
+- **`exports/redownload-*.json`**: a plain list (title, year, tvdb/tmdb/imdb IDs, path, monitored seasons), in case the configs themselves are unusable
+
+> [!IMPORTANT]
+> Keep **outside this server** (password manager): `RESTIC_PASSWORD`, `RCLONE_CONFIG_GDRIVE_CLIENT_ID`, `RCLONE_CONFIG_GDRIVE_CLIENT_SECRET`. The token can be regenerated, but only with the **same** client. A new client can't see the existing repo, because of the `drive.file` scope.
+
+### A. Only the media drive died (server OK)
+1. Install the new drive and mount it at **`/mnt/media`**. Same path: everything in Docker expects it. Update `/etc/fstab` with the new UUID (`sudo blkid`).
+2. Recreate the root folders:
+   `sudo mkdir -p /mnt/media/{Shows,Anime,Movies} && sudo chown -R 1000:1000 /mnt/media`
+3. Restart the stack: `docker restart sonarr radarr jellyfin`.
+4. **Sonarr:** *Series → Update All* (it notices the files are gone), then *Wanted → Missing → Search All*.
+   **Radarr:** *Movies → Update All*, then *Wanted → Missing → Search All*.
+5. Downloads land in `/mnt/data/Downloads` and get imported into `/mnt/media/...`. Jellyfin picks them up as they arrive; you can also use *Dashboard → Scan All Libraries*.
+
+Titles that were unmonitored stay unmonitored and won't be searched; that's on purpose. Check that *Settings → Media Management → "Unmonitor deleted episodes/movies"* is **off** before step 4. It was off as of 2026-11-03; if it's on, missing files get unmonitored instead of re-downloaded.
+
+### B. The whole server died
+1. New Debian box: install Docker, git, python3. `git clone https://github.com/ftoralesacosta/HomeLab ~/HomeLab`.
+2. `docker build -t homelab-backup:restic ~/HomeLab/backup`
+3. Create `~/HomeLab/.env` with just `RESTIC_PASSWORD`, `RCLONE_CONFIG_GDRIVE_TYPE=drive`, `RCLONE_CONFIG_GDRIVE_SCOPE=drive.file`, `_CLIENT_ID` and `_CLIENT_SECRET` (from the password manager). Then get a new `_TOKEN` (see the OAuth client steps above, step 6; use the existing client and add a new secret if needed).
+4. Restore everything from Google Drive (about 1 min per GB):
+   `./backup/backup.sh --restic gdrive restore latest --target /restore`, which writes to `/tmp/data/{staging,homelab}`.
+5. `cp /tmp/data/homelab/.env ~/HomeLab/.env`; also copy any other gitignored files you need from `/tmp/data/homelab/` (e.g. `OpenWRT-BPI_R4/local/`).
+6. Copy each app back using the table above (`sudo mkdir -p <host path> && sudo cp -a /tmp/data/staging/<app>/. <host path>/`).
+7. Mount the disks: media at `/mnt/media` (then step A2), and the second NVMe at `/mnt/data` (downloads + local backups).
+8. Start the stacks as described in the main [README](../README.md). Then do steps A4–A5.
+9. Re-add the cron jobs (`crontab -e`):
+   ```
+   30 3 * * * /home/fernando/HomeLab/backup/backup.sh >> /home/fernando/HomeLab/backup/logs/cron.log 2>&1
+   45 5 * * * timeout 900 docker exec actual-ai node /scripts/bank-sync.js >> /home/fernando/HomeLab/actual-ai/logs/cron.log 2>&1
+   45 6 * * * docker exec actual-ai node /scripts/daily-fixups.js >> /home/fernando/HomeLab/actual-ai/logs/cron.log 2>&1
+   ```
+
+### C. The Sonarr/Radarr configs are lost or broken too
+Start fresh Sonarr/Radarr. Set up Prowlarr and the download clients, or restore just those apps. Then re-add every title from the list ([`readd-media.py`](readd-media.py), stdlib Python, dry run by default):
+```bash
+cd ~/HomeLab
+./backup/backup.sh --restic gdrive restore latest --include /data/staging/exports --target /restore
+# Sonarr/Radarr have no published ports, so run the script in a throwaway python container on their network:
+export SONARR_API_KEY=$(docker exec sonarr sed -n 's:.*<ApiKey>\(.*\)</ApiKey>.*:\1:p' /config/config.xml)
+export RADARR_API_KEY=$(docker exec radarr sed -n 's:.*<ApiKey>\(.*\)</ApiKey>.*:\1:p' /config/config.xml)
+RUN() { docker run --rm --network homelab_proxy-net -e SONARR_API_KEY -e RADARR_API_KEY \
+        -v "$PWD/backup":/app:ro -v /tmp/data/staging/exports:/x:ro python:3-alpine \
+        python /app/readd-media.py /x --sonarr http://sonarr:8989 --radarr http://radarr:7878 "$@"; }
+RUN                    # dry run: lists what it would add
+RUN --apply --search   # add everything and start searching
+```
+It keeps the original folder paths, monitored seasons and quality profiles (matched by name), and skips titles that already exist. Tested 2026-11-04: fresh empty Sonarr/Radarr ended up with 9/9 shows and 23/23 movies, with the same paths, seasons and monitored flags.
