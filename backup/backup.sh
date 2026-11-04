@@ -124,10 +124,24 @@ make_envfile() {  # pass only what restic/rclone need, not the whole .env
   ENVF=$(mktemp); chmod 600 "$ENVF"
   grep -E '^(RESTIC_PASSWORD|RCLONE_CONFIG_GDRIVE_[A-Z_]+)=' "$HL/.env" > "$ENVF" || true
   grep -q '^RESTIC_PASSWORD=.' "$ENVF" || { log "ERROR RESTIC_PASSWORD missing in .env"; exit 1; }
+  # rclone >= 1.70 "authorize" prints base64({client_id, client_secret, token}); rclone 1.66 here wants the plain token JSON.
+  python3 - "$ENVF" <<'EOF'
+import base64, json, sys
+p = sys.argv[1]; lines = open(p).read().splitlines(); out = []
+for l in lines:
+    k, _, v = l.partition("=")
+    if k == "RCLONE_CONFIG_GDRIVE_TOKEN" and v and not v.startswith("{"):
+        d = json.loads(base64.b64decode(v + "=" * (-len(v) % 4)))
+        t = d["token"]; t = json.loads(t) if isinstance(t, str) else t
+        out.append(k + "=" + json.dumps(t, separators=(",", ":")))
+    else:
+        out.append(l)
+open(p, "w").write("\n".join(out) + "\n")
+EOF
 }
 restic_run() {  # restic_run <repo> <args...>
   local repo=$1; shift
-  docker run --rm --env-file "$ENVF" --hostname debian \
+  ${TMO:+timeout $TMO} docker run --rm --env-file "$ENVF" --hostname debian \
     -v "$B/restic":/repo-local -v "$B/restic-cache":/root/.cache/restic \
     -v "$STAGE":/data/staging:ro -v "$HL":/data/homelab:ro \
     -v /tmp:/restore \
@@ -136,7 +150,9 @@ restic_run() {  # restic_run <repo> <args...>
 backup_to() {  # backup_to <repo> <label>
   local repo=$1 label=$2
   restic_run "$repo" cat config >/dev/null 2>&1 || { log "init $label repo"; restic_run "$repo" init >>"$LOG" 2>&1 || { log "ERROR init $label"; FAIL=1; return; }; }
-  if restic_run "$repo" backup --tag nightly /data/staging /data/homelab --exclude /data/homelab/.git --exclude /data/homelab/backup/logs >>"$LOG" 2>&1; then
+  restic_run "$repo" unlock >/dev/null 2>&1   # removes only stale locks (e.g. from a killed run)
+  # 3h cap: timeout's SIGTERM is proxied by `docker run` to restic, which stops cleanly (next run resumes, dedup keeps what was uploaded)
+  if TMO=3h restic_run "$repo" backup --tag nightly /data/staging /data/homelab --exclude /data/homelab/.git --exclude /data/homelab/backup/logs >>"$LOG" 2>&1; then
     log "backup -> $label OK"
   else log "ERROR backup -> $label"; FAIL=1; return; fi
   restic_run "$repo" forget --tag nightly --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --prune >>"$LOG" 2>&1 \
@@ -152,6 +168,8 @@ case "${1:-}" in
                grep -q '^RCLONE_CONFIG_GDRIVE_TOKEN=.' "$ENVF" && restic_run "$GDRIVE_REPO" snapshots; exit 0 ;;
 esac
 
+exec 9>/tmp/homelab-backup.lock
+flock -n 9 || { log "another backup.sh is still running - skipping this run"; exit 1; }
 log "=================== backup start"
 make_envfile
 docker image inspect "$IMG" >/dev/null 2>&1 || docker build -q -t "$IMG" "$HL/backup" >>"$LOG" 2>&1

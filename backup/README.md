@@ -20,7 +20,7 @@ Google only ever receives encrypted chunks. Without `RESTIC_PASSWORD` the backup
 
 | Included | Excluded (rebuildable) |
 |---|---|
-| Actual Budget, Sonarr, Radarr, Prowlarr, Bazarr, SABnzbd, qBittorrent, Jellyfin (DB, users, watch state, config), NPM (+ certs), Home Assistant, Homebridge, Authelia, Open WebUI, Hermes, Minecraft worlds + server config (flushed via rcon `save-off`/`save-all`, not paused) | media files, Jellyfin metadata/trickplay images, logs, caches, Hermes tools, Minecraft server jars/libraries, JVM core dumps, crash reports |
+| Actual Budget, Sonarr, Radarr, Prowlarr, Bazarr, SABnzbd, qBittorrent, Jellyfin (DB, users, watch state, config), NPM (+ certs), Home Assistant, Homebridge, Authelia, Open WebUI, Hermes | media files, Jellyfin metadata/trickplay images, logs, caches, Hermes tools |
 
 ## Secrets (`~/HomeLab/.env`)
 | Variable | Value |
@@ -28,9 +28,24 @@ Google only ever receives encrypted chunks. Without `RESTIC_PASSWORD` the backup
 | `RESTIC_PASSWORD` | long random string, **no quotes** |
 | `RCLONE_CONFIG_GDRIVE_TYPE` | `drive` |
 | `RCLONE_CONFIG_GDRIVE_SCOPE` | `drive.file` (rclone can only see files it created) |
-| `RCLONE_CONFIG_GDRIVE_TOKEN` | the one-line JSON from `rclone authorize "drive" "eyJzY29wZSI6ImRyaXZlLmZpbGUifQ"` (run on a machine with a browser) |
+| `RCLONE_CONFIG_GDRIVE_CLIENT_ID` / `_CLIENT_SECRET` | your own Google OAuth client (see below) |
+| `RCLONE_CONFIG_GDRIVE_TOKEN` | whatever `rclone authorize` prints (base64 or JSON; the script handles both) |
 
 The script passes only these variables to the restic container. If the token is missing, the offsite copy is skipped and the run is marked failed.
+
+**Why your own OAuth client:** rclone's built-in client ID is shared by every rclone user worldwide. The first upload stalled on `rateLimitExceeded` and only 746 bytes got through in 8 minutes. A personal client gets its own quota, and it's free.
+1. https://console.cloud.google.com → create a project (e.g. `homelab-backup`).
+2. *APIs & Services → Library* → enable **Google Drive API**.
+3. *Google Auth Platform* (OAuth consent screen) → Get started → app name, your email, Audience **External** → Create.
+4. *Audience* → **Publish app** (In production). In "Testing" mode, refresh tokens expire after 7 days. `drive.file` is a non-sensitive scope, so Google doesn't need to verify the app.
+5. *Clients* → Create client → type **Desktop app** → copy the Client ID and Client secret.
+6. On a machine with a browser:
+   ```bash
+   ID='…apps.googleusercontent.com'; SECRET='…'
+   rclone authorize drive "$(printf '{"scope":"drive.file","client_id":"%s","client_secret":"%s"}' "$ID" "$SECRET" | base64)"
+   ```
+
+Note: with `drive.file`, files are tied to the OAuth client that created them. If you switch clients, the new one can't see the old repo.
 
 ## Usage
 ```bash
