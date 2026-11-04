@@ -24,8 +24,6 @@ Start / update: `docker compose up -d [service]` in this directory.
 Not in this compose file:
 - **Hermes agent**: systemd service `hermes-gateway` (user `hermes`, `/opt/hermes-agent`,
   API on 127.0.0.1:8642). Open WebUI uses it as a second model backend.
-- **Codex CLI**: uses CoreWeave (no OpenAI account). `/model` lists our five CoreWeave models; also
-  `codex -p deepseek|glm|glmflash|qwen|gemma`. Setup, caveats, how to add models: [codex/README.md](codex/README.md).
 
 ---
 
@@ -36,7 +34,7 @@ All secrets live in **`~/HomeLab/.env`** (owner `fernando`, mode `600`, gitignor
 
 | Variable | Used by |
 |---|---|
-| `COREWEAVE_API_KEY`, `COREWEAVE_API_BASE` | Open WebUI, Hermes, Codex/shells |
+| `COREWEAVE_API_KEY`, `COREWEAVE_API_BASE` | Open WebUI, Hermes, shells |
 | `HERMES_API_KEY` | Open WebUI (client) and Hermes (as `API_SERVER_KEY`) |
 | `WEBUI_SECRET_KEY`, `OAUTH_CLIENT_SECRET` | Open WebUI |
 | `GMAIL_APP_PASSWORD` | Authelia (email notifier) |
@@ -45,7 +43,7 @@ All secrets live in **`~/HomeLab/.env`** (owner `fernando`, mode `600`, gitignor
 How each consumer gets its values:
 - **Containers**: Compose substitutes `${VAR}` from `.env`. A container receives only the
   variables listed in its own `environment:` block, not the whole file.
-- **Codex / shells**: `~/.bashrc` exports only `COREWEAVE_API_KEY` and `COREWEAVE_API_BASE`
+- **Shells**: `~/.bashrc` exports only `COREWEAVE_API_KEY`, `COREWEAVE_API_BASE`, and `HERMES_API_KEY`
   from `.env`.
 - **Hermes**: the `hermes` user **cannot read `.env`**. `hermes-env.service` (runs as root just
   before Hermes) copies only `COREWEAVE_API_KEY` and `HERMES_API_KEY` (renamed to
@@ -64,7 +62,6 @@ Other secret files (gitignored, real values only on the server):
    `curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer <key>" https://api.inference.wandb.ai/v1/models` → `200`.
 2. `cd ~/HomeLab && docker compose up -d open-webui`
 3. `sudo systemctl restart hermes-gateway`
-4. Codex: quit it, run `pkill -f app-server-daemon` (its background process keeps the old key), open a new shell, start `codex`.
 
 The same pattern applies to any other variable: edit `.env`, then `docker compose up -d <service>`
 (and restart `hermes-gateway` if it is `HERMES_API_KEY`).
