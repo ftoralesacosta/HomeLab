@@ -9,6 +9,8 @@ One plain bash script run nightly by cron, with no daemons. [`backup.sh`](backup
 
 Google only ever receives encrypted chunks. Without `RESTIC_PASSWORD` the backups **cannot be read by anyone, including you**, so keep that password in your password manager.
 
+Last verified 2026-11-03: a full run took about 3.5 minutes (1.13 GiB, stored as 730 MB), and restoring Actual, the Minecraft world, the exports and `.env` from **both** repos matched the originals byte for byte. Re-test a restore every few months.
+
 ## What it does
 1. **Stage.** Each container is paused for about a second while its config folder is copied (GNU tar) into `/mnt/data/backups/staging/<app>`, so SQLite databases are consistent. A trap unpauses everything on exit.
 2. **Export.** Human-readable JSON goes to `staging/exports/`:
@@ -33,19 +35,24 @@ Google only ever receives encrypted chunks. Without `RESTIC_PASSWORD` the backup
 
 The script passes only these variables to the restic container. If the token is missing, the offsite copy is skipped and the run is marked failed.
 
-**Why your own OAuth client:** rclone's built-in client ID is shared by every rclone user worldwide. The first upload stalled on `rateLimitExceeded` and only 746 bytes got through in 8 minutes. A personal client gets its own quota, and it's free.
-1. https://console.cloud.google.com → create a project (e.g. `homelab-backup`).
-2. *APIs & Services → Library* → enable **Google Drive API**.
-3. *Google Auth Platform* (OAuth consent screen) → Get started → app name, your email, Audience **External** → Create.
-4. *Audience* → **Publish app** (In production). In "Testing" mode, refresh tokens expire after 7 days. `drive.file` is a non-sensitive scope, so Google doesn't need to verify the app.
-5. *Clients* → Create client → type **Desktop app** → copy the Client ID and Client secret.
-6. On a machine with a browser:
-   ```bash
-   ID='…apps.googleusercontent.com'; SECRET='…'
-   rclone authorize drive "$(printf '{"scope":"drive.file","client_id":"%s","client_secret":"%s"}' "$ID" "$SECRET" | base64)"
-   ```
+**Why your own OAuth client:** rclone's built-in client ID is shared by every rclone user worldwide. The first upload stalled on `rateLimitExceeded` and only 746 bytes got through in 8 minutes. With a personal client (free), the first 730 MB upload took about 3 minutes.
 
-Note: with `drive.file`, files are tied to the OAuth client that created them. If you switch clients, the new one can't see the old repo.
+Google Cloud project `homelab-backup`, created 2026-11. To redo it:
+1. https://console.cloud.google.com → create a project.
+2. *APIs & Services → Library* → enable **Google Drive API**. The "Create credentials" wizard is fine to use: pick **User data**, not Application data (which makes a service account).
+3. *Google Auth Platform → Branding* (https://console.cloud.google.com/auth/branding): app name, support email, **developer contact email** (at the bottom; easy to miss), home page + authorized domain `ftoralesacosta.me`. **No logo**, because a logo forces Google's verification review.
+4. *Audience* (https://console.cloud.google.com/auth/audience) → **Publish app**, so it's In production. The button stays grey until Branding is complete. In Testing mode, refresh tokens expire after 7 days. `drive.file` is non-sensitive, so no verification is needed. The "unverified app" warning at login is expected.
+5. *Clients* (https://console.cloud.google.com/auth/clients) → Create client → **Desktop app**. Leave "AI-powered agent" unchecked; use a separate client for agents. The **secret is shown only once**. Later: open the client → *Client secrets* → **+ Add secret**.
+6. Get the token on the server through an SSH tunnel. rclone's login redirects the browser to `localhost:53682`:
+   ```bash
+   ssh -L 53682:localhost:53682 fernando@192.168.4.51        # from the Mac
+   ID='…apps.googleusercontent.com'; SECRET='GOCSPX-…'
+   B=$(printf '{"scope":"drive.file","client_id":"%s","client_secret":"%s"}' "$ID" "$SECRET" | base64 -w0 | tr -d '=')   # rclone rejects '=' padding
+   docker run --rm -it --network host --entrypoint rclone homelab-backup:restic authorize drive "$B"
+   ```
+   Open the printed `http://127.0.0.1:53682/auth?...` link in the Mac's browser. The consent page must say **homelab-backup** and ask only for "files you use with this app". If it says "rclone" or asks for all of Drive, the blob was empty, so press Ctrl+C. Paste the printed token into `.env`.
+
+Note: with `drive.file`, files are tied to the OAuth client that created them. If you switch clients, the new one can't see the old repo. Re-authorizing the **same** client is fine.
 
 ## Usage
 ```bash
