@@ -15,11 +15,15 @@ Verizon fiber ─► BPI-R4 router (OpenWrt) ─► LAN 192.168.4.0/22 ─► de
 | Edge | `reverse-proxy` (Nginx Proxy Manager: 80/443; admin UI **not public**: http://192.168.4.51:81 at home, away `ssh -L 8181:localhost:81 fernando@ftoralesacosta.me` → http://localhost:8181), `cloudflare-ddns`, `cloudflare-ddns-for-minecraft` |
 | Auth | `authelia` (https://auth.ftoralesacosta.me, image pinned to 4.39) |
 | AI | `open-webui` (https://webui.ftoralesacosta.me, host network, port 3000; web search via SearXNG), `searxng` (LAN only) |
-| Media | `jellyfin`, `sonarr`, `radarr`, `prowlarr`, `bazarr`, `sabnzbd`, `qbittorrent` (via `vpn` = gluetun), `flaresolverr` |
+| Media | `jellyfin`, `sonarr`, `radarr`, `lidarr` (music), `bazarr`, `prowlarr`, `sabnzbd`, `qbittorrent` (via `vpn` = gluetun), `flaresolverr`, `bindery` (books, Readarr successor), `kavita` (ebook/comic reader) |
 | Home | `homeassistant`, `homebridge` |
 | Other | `mc` (Minecraft), `actual` (Actual Budget), `website` |
 
 Start / update: `docker compose up -d [service]` in this directory.
+
+Proxy hosts (`*.ftoralesacosta.me` → containers) live in NPM's database, not in this repo —
+manage them in the UI (http://192.168.4.51:81) or with
+[`nginx-proxy-manager/add-host.sh`](nginx-proxy-manager/README.md).
 
 Not in this compose file:
 - **Hermes agent**: systemd service `hermes-gateway` (user `hermes`, `/opt/hermes-agent`,
@@ -38,6 +42,7 @@ All secrets live in **`~/HomeLab/.env`** (owner `fernando`, mode `600`, gitignor
 | `HERMES_API_KEY` | Open WebUI (client) and Hermes (as `API_SERVER_KEY`) |
 | `WEBUI_SECRET_KEY`, `OAUTH_CLIENT_SECRET` | Open WebUI |
 | `GMAIL_APP_PASSWORD` | Authelia (email notifier) |
+| `NPM_ADMIN_EMAIL` | `nginx-proxy-manager/add-host.sh` CLI (admin password is prompted, never stored) |
 | `Cloudflare_API_KEY`, `WIREGUARD_*`, `SEARXNG_SECRET`, `DOMAIN_NAME`, `DOCKERDIR` | the containers that reference them in docker-compose.yml |
 
 How each consumer gets its values:
@@ -79,9 +84,14 @@ The same pattern applies to any other variable: edit `.env`, then `docker compos
 - Adding an OIDC app: add a client under `identity_providers.oidc.clients` in
   `authelia/configuration.yml` (template in `configuration.example.yml`), restart `authelia`.
 - **Authelia gate** (NPM host → Advanced: `include /snippets/authelia.conf;`, file
-  `nginx-proxy-manager/snippets/authelia.conf`): `ha.` (group `admin` only; HA `/api/` and
-  `/auth/token` bypass so the companion app works) and `jellyfin.` (any Authelia user). Who may pass is set by
-  `access_control` in `authelia/configuration.yml`.
+  `nginx-proxy-manager/snippets/authelia.conf`; the snippet also forwards the
+  authenticated username as `Remote-User`): `ha.` (group `admin` only; HA `/api/` and
+  `/auth/token` bypass so the companion app works), `jellyfin.` (any Authelia user), and
+  `bindery.` (groups `admin` + `family`; Bindery runs auth mode "proxy" and consumes
+  `Remote-User`, so a passing Authelia session logs straight in — no second login; other
+  Authelia users auto-provision as role `user`). Never route to Bindery from an NPM
+  host/location without the snippet — a client could forge the identity header. Who may
+  pass is set by `access_control` in `authelia/configuration.yml`.
 - **Jellyfin on the TV/phone apps**: use the internal-only address `http://192.168.4.51:8443`
   (`jellyfin-internal-proxy` → `jellyfin:8096`); apps cannot log in through Authelia. The public host is for browsers.
 - Plan and status of the wider rollout: [homelab-sso-rollout.md](homelab-sso-rollout.md).

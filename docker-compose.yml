@@ -120,6 +120,24 @@ services:
       - ${DOCKERDIR}/jellyfin/cache:/cache
       - /mnt/media/:/media
 
+  # Ebook/comic reader (web reader, OPDS, Kobo sync) for the library Bindery
+  # builds in /mnt/media/Books. Add a "Books" library pointing at /media/Books
+  # on first run. Kavita+ features are off without a license; not needed.
+  kavita:
+    image: lscr.io/linuxserver/kavita:latest
+    container_name: kavita
+    restart: unless-stopped
+    networks:
+      - proxy-net
+    # No host ports: reached via NPM / other containers at kavita:5000.
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+    volumes:
+      - ${DOCKERDIR}/kavita/config:/config
+      - /mnt/media/:/media
+
   mc:
     image: itzg/minecraft-server:java25
     container_name: minecraft-server
@@ -313,6 +331,58 @@ services:
       - /mnt/media/:/media
       - /mnt/data/Downloads/:/downloads
     # No host ports: reached via NPM at bazarr:6767.
+
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    restart: always
+    networks:
+      - proxy-net
+    # No host ports: reached via NPM / other containers at lidarr:8686.
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=America/New_York
+    volumes:
+      - ${DOCKERDIR}/lidarr/config:/config
+      - /mnt/media/:/media
+      - /mnt/data/Downloads/:/downloads
+
+  # --- Books (Readarr successor; Readarr was archived 2025-06 when its
+  # metadata API died). Single Go binary, metadata from OpenLibrary /
+  # Google Books / Hardcover (documented APIs, no scraping). Indexers and
+  # download clients (sabnzbd:8080, vpn-gateway:8080) are configured in the
+  # web UI; Prowlarr syncs as generic Newznab/Torznab per indexer.
+  bindery:
+    image: ghcr.io/vavallee/bindery:latest
+    container_name: bindery
+    restart: always
+    networks:
+      - proxy-net
+    # No host ports: reached via NPM / other containers at bindery:8787.
+    # Distroless image, no runtime user switching: run as the uid:gid that
+    # owns the library and downloads (1000, same as PUID elsewhere here).
+    # ~/.volumes/bindery must exist and be owned by 1000 before start.
+    user: "1000:1000"
+    environment:
+      - TZ=America/New_York
+      - BINDERY_LOG_LEVEL=info
+      # Bootstrap-only knobs (everything else is set in the web UI):
+      - BINDERY_LIBRARY_DIR=/media/Books        # ebook root (Kavita serves this)
+      - BINDERY_AUDIOBOOK_DIR=/media/Audiobooks
+      - BINDERY_DOWNLOAD_DIR=/downloads
+      # Forward-auth SSO behind the Authelia gate: trust only proxy-net (where
+      # NPM connects from) and read the Remote-User header gated hosts forward.
+      # The auth mode itself is NOT an env knob: flip via API after first-run
+      # (PUT /api/v1/auth/mode {"mode":"proxy"} - not offered in Settings UI).
+      # First-run admin username MUST equal the Authelia username; other
+      # Authelia users are auto-provisioned as role "user" on first pass.
+      - BINDERY_TRUSTED_PROXY=172.23.0.0/16
+      - BINDERY_PROXY_AUTH_HEADER=Remote-User
+    volumes:
+      - ${DOCKERDIR}/bindery/config:/config
+      - /mnt/media/:/media
+      - /mnt/data/Downloads/:/downloads
 
   flaresolverr:
     image: 21hsmw/flaresolverr:nodriver

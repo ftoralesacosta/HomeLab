@@ -37,6 +37,7 @@ someone changes a password; that is expected.
 |---|---|
 | Open WebUI | **OIDC login** (client `open-webui`). New Authelia users get a *pending* Open WebUI account that an admin approves |
 | Jellyfin | Not connected: TV/phone apps cannot do a browser login. Planned: Jellyfin SSO plugin (web login only) |
+| Bindery | **Proxy SSO**: gate snippet forwards `Remote-User`; Bindery auth mode "proxy" (set via API, `PUT /api/v1/auth/mode`). Passing users log straight in; new usernames auto-provision as role `user`. Gate rule: groups `admin` + `family` |
 | Others | Own logins. NPM can add an Authelia **gate** per host (Access Lists → method *Authelia*) |
 
 Add an OIDC app: add a client under `identity_providers.oidc.clients` in `configuration.yml` (template in

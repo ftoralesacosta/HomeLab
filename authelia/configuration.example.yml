@@ -43,12 +43,21 @@ notifier:
     sender: you@example.com
 
 access_control:
-  # Per-service allow/deny is handled by the NPM access list (Authelia method),
-  # not here. This only governs the auth domain itself.
+  # The gate (nginx-proxy-manager/snippets/authelia.conf) calls /api/verify,
+  # which enforces these rules per request: default_policy deny means an
+  # unrouted domain answers 403 through the gate.
   default_policy: deny
   rules:
     - domain: "auth.ftoralesacosta.me"
       policy: one_factor
+    # Bindery (proxy-auth SSO: snippet forwards Remote-User, Bindery auth mode
+    # "proxy"): admin + family pass; friends get no group, so they don't.
+    # ha./jellyfin. rules live only in the live configuration.yml.
+    - domain: "bindery.ftoralesacosta.me"
+      policy: one_factor
+      subject:
+        - "group:admin"
+        - "group:family"
 
 # OIDC provider (SSO for apps that support OpenID Connect, e.g. Open WebUI).
 # Generate with the authelia image:
