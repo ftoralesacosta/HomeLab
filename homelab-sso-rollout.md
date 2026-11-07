@@ -199,6 +199,64 @@ docker logs --tail 20 authelia
 - Next: once the SSO login is confirmed, optionally set `ENABLE_LOGIN_FORM=false` in Open WebUI;
   consider `two_factor` (TOTP) for the client.
 
+## Update 2026-11-05 — Arr stack gated (supersedes the 2026-10-20 "not gated" decision)
+
+prowlarr/lidarr/sonarr/radarr (NPM hosts 4/17/9/3) now use the Authelia gate
+(`include /snippets/authelia.conf;` in advanced_config), and the apps run
+`<AuthenticationMethod>External</AuthenticationMethod>` in their config.xml — one Authelia
+login replaces the per-app login, which is what the original "no SSO support → double
+login" objection was about.
+
+- Authelia `access_control` (live configuration.yml): for the four domains,
+  `^/api([/?].*)?$` + `^/[0-9]+/api([/?].*)?$` = **bypass** (API-key clients, incl. external
+  Prowlarr indexer queries), everything else = one_factor for groups admin+family.
+  `/initialize.json` (holds the API key) stays gated.
+- Container-name traffic (`http://prowlarr:9696/…` sync, `http://radarr:7878`, …) never
+  touches the gate; that's why each app's AllowedHosts lists its own container name.
+- AllowedHosts per app: `<app>.ftoralesacosta.me,<app>,localhost,127.0.0.1`.
+- lidarr had **no Cloudflare DNS record** (and had been sitting at
+  `AuthenticationMethod=None` since 2026-11-04) — proxied CNAME `lidarr → ftoralesacosta.me`
+  added via API 2026-11-05, so lidarr is now public but properly gated.
+- The `cli-test.ftoralesacosta.me` NPM host (id 20, test lidarr route created 2026-11-05
+  16:03) was soft-deleted by that same earlier session (modified 16:04); no conf on disk.
+- Backups: `authelia/configuration.yml.bak.2026-11-05_1500`, NPM DB
+  `/data/database.sqlite.bak-arrgate-2026-11-05_1500` (also visible at
+  `/home/fernando/.volumes/nginx-proxy-manager/data/…`), each app
+  `config.xml.bak.2026-11-05_1536`.
+- Verified: unauthenticated UI → 302 to auth.ftoralesacosta.me on all four;
+  `/api/v1/health` (prowlarr/lidarr) → 401 without key, 200 with;
+  `/api/v3/system/status` (sonarr/radarr) → 401/200 same; `/initialize.json` → 302 (gated).
+
+## Update 2026-11-06 — Two-factor authentication enforced
+
+2FA (TOTP + WebAuthn) is now required for groups `admin`+`family`, and the OIDC client
+`open-webui` became `authorization_policy: 'two_factor'` — this closes the 2026-10-24
+"consider two_factor for the client" next-step. Changes in the live
+`authelia/configuration.yml` (mirrored in `configuration.example.yml`, user-facing docs in
+the Two-Factor Authentication section of `authelia/README.md`):
+
+- New `totp:` / `webauthn:` blocks — issuer/display name `ftoralesacosta.me`. Both methods
+  are enabled by default in 4.x; passkeys are used as the *second* factor
+  (passkey *login* stays off).
+- `identity_validation.elevated_session`: `require_second_factor: true` +
+  `skip_second_factor: true` — adding another 2FA device requires an existing second
+  factor (a stolen password alone can't register an attacker's device), while first-time
+  enrollment still works.
+- Flipped to `two_factor`: the arr UI rule, `bindery.`, and the `ha.` admin rule; plus a
+  **new** `jellyfin.` rule for admin+family, inserted above the existing any-user rule so
+  friends keep one_factor Jellyfin. The portal (`auth.`) deliberately stays one_factor.
+- Open WebUI's OIDC client asks *all* its users (friends included) for a second factor;
+  anyone with nothing registered is sent to enrollment automatically at login.
+- Verified: `authelia validate-config` on the new config before the swap-in; after
+  restart, an `access-control check-policy` matrix (arr UI two_factor, arr API bypass,
+  portal one_factor, bindery/ha/jellyfin two_factor, family-group case, friend fall-through
+  to one_factor) plus curl smokes (4× UI → 302 to auth., 4× API → 401) — all green.
+- Backup: `authelia/configuration.yml.bak-2fa-2026-11-06_1950`. Registered 2FA data lives
+  in the SQLite storage DB, which the nightly restic backup already snapshots
+  (`stage authelia` in `backup/backup.sh`).
+- `fernando` enrolled both methods (1 row each in `totp_configurations` /
+  `webauthn_credentials`). Family/friends self-enroll when prompted.
+
 ## 7 — Current action checklist
 
 Already done in the repo:

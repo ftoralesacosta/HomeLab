@@ -414,3 +414,38 @@ NPM host 7 (`nginx.ftoralesacosta.me`) soft-deleted (conf in `/data/nginx/delete
 `/data/database.sqlite.bak-20261028-nonginx`); Authelia admin rule now covers `ha.` only.
 Access: home `http://192.168.4.51:81`; away `ssh -L 8181:localhost:81 fernando@ftoralesacosta.me` → `http://localhost:8181`.
 Cloudflare DNS record `nginx` can be deleted.
+
+## Update 2026-11-05 — Arr stack joined the gate (supersedes "Not gated — intentional")
+
+The 2026-10-20/28 decision to leave the arr stack ungated (sections 2 and 3 above) is
+superseded. NPM hosts 3/4/9/17 (radarr/prowlarr/sonarr/lidarr) now include
+`/snippets/authelia.conf`, and `access_control.rules` gained — at the top of the list — a
+**bypass** rule for the four domains' `^/api([/?].*)?$` and `^/[0-9]+/api([/?].*)?$`
+(API-key clients) plus a **one_factor** rule for the same domains restricted to groups
+admin+family (mirrors bindery). The apps themselves run
+`<AuthenticationMethod>External</AuthenticationMethod>` (config.xml, patched while stopped)
+with AllowedHosts = public name + container name + localhost, so the gate's login is the
+only login — no double login, which is what originally kept them ungated.
+`/initialize.json` (contains the API key) remains behind the gate.
+`lidarr.ftoralesacosta.me` got its Cloudflare CNAME on this date — it never had one (and
+had been running `AuthenticationMethod=None` since 2026-11-04).
+Details + backups: `homelab-sso-rollout.md`, section "Update 2026-11-05".
+
+## Update 2026-11-06 — Two-factor authentication (TOTP + WebAuthn) enforced
+
+The `access_control` rules for the arr UI, `bindery.`, and the `ha.` admin rule were
+flipped one_factor → two_factor, and a new `jellyfin.` rule (admin+family) was inserted
+above the existing any-user one_factor rule — friends keep one_factor Jellyfin, and the
+`auth.` portal deliberately stays one_factor. The OIDC client `open-webui` moved to
+`authorization_policy: 'two_factor'`, which asks *all* Open WebUI users (friends included)
+for a second factor; anyone with no method registered is sent to enrollment at login.
+The live config also gained the `totp:` / `webauthn:` branding blocks
+(`ftoralesacosta.me`; both methods on by default in 4.x, passkeys as the second factor
+only) and `identity_validation.elevated_session` with `require_second_factor: true` +
+`skip_second_factor: true`: adding another 2FA device requires an existing second factor,
+first-time enrollment still works. Everything was verified before/after the swap-in:
+`authelia validate-config` on the candidate file, an access-control check-policy matrix
+after restart, and curl smokes (gates behave exactly as before: UI 302 / API 401).
+Backup: `authelia/configuration.yml.bak-2fa-2026-11-06_1950`. User-facing docs: the
+"Two-Factor Authentication" section in `authelia/README.md` (enrollment steps + lost-device
+recovery with `storage user totp|webauthn delete`).

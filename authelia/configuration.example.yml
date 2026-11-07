@@ -10,6 +10,11 @@ identity_validation:
   reset_password:
     jwt_lifespan: 30m   # reset links stay valid 30 min (default 5 min)
     jwt_secret: "REPLACE_ME"
+  # Sensitive portal actions (e.g. adding a new 2FA device) ask for a second factor;
+  # users with none yet can still enroll the first one.
+  elevated_session:
+    require_second_factor: true
+    skip_second_factor: true
 
 session:
   name: authelia
@@ -42,6 +47,14 @@ notifier:
     # password: supplied via AUTHELIA_NOTIFIER_SMTP_PASSWORD (from .env)
     sender: you@example.com
 
+totp:
+  # Label shown in authenticator apps; changing it invalidates existing registrations.
+  issuer: 'ftoralesacosta.me'
+
+webauthn:
+  # Display name for security keys / passkeys (second factor).
+  display_name: 'ftoralesacosta.me'
+
 access_control:
   # The gate (nginx-proxy-manager/snippets/authelia.conf) calls /api/verify,
   # which enforces these rules per request: default_policy deny means an
@@ -50,11 +63,32 @@ access_control:
   rules:
     - domain: "auth.ftoralesacosta.me"
       policy: one_factor
+    # *arr stack (prowlarr/lidarr/sonarr/radarr): apps run External auth behind the
+    # gate, so /api (and Prowlarr's /<n>/api sync paths) stay open for API-key
+    # clients; everything else needs a login. /initialize.json stays gated.
+    - domain:
+      - "prowlarr.ftoralesacosta.me"
+      - "lidarr.ftoralesacosta.me"
+      - "sonarr.ftoralesacosta.me"
+      - "radarr.ftoralesacosta.me"
+      resources:
+        - "^/api([/?].*)?$"
+        - "^/[0-9]+/api([/?].*)?$"
+      policy: bypass
+    - domain:
+      - "prowlarr.ftoralesacosta.me"
+      - "lidarr.ftoralesacosta.me"
+      - "sonarr.ftoralesacosta.me"
+      - "radarr.ftoralesacosta.me"
+      policy: two_factor
+      subject:
+        - "group:admin"
+        - "group:family"
     # Bindery (proxy-auth SSO: snippet forwards Remote-User, Bindery auth mode
     # "proxy"): admin + family pass; friends get no group, so they don't.
     # ha./jellyfin. rules live only in the live configuration.yml.
     - domain: "bindery.ftoralesacosta.me"
-      policy: one_factor
+      policy: two_factor
       subject:
         - "group:admin"
         - "group:family"
@@ -85,7 +119,7 @@ identity_providers:
         client_name: 'Open WebUI'
         client_secret: '$pbkdf2-sha512$REPLACE_WITH_DIGEST'
         public: false
-        authorization_policy: 'one_factor'
+        authorization_policy: 'two_factor'
         claims_policy: 'default'
         require_pkce: false
         redirect_uris:
