@@ -15,7 +15,7 @@ Verizon fiber ─► BPI-R4 router (OpenWrt) ─► LAN 192.168.4.0/22 ─► de
 | Edge | `reverse-proxy` (Nginx Proxy Manager: 80/443; admin UI **not public**: http://192.168.4.51:81 at home, away `ssh -L 8181:localhost:81 fernando@ftoralesacosta.me` → http://localhost:8181), `cloudflare-ddns`, `cloudflare-ddns-for-minecraft` |
 | Auth | `authelia` (https://auth.ftoralesacosta.me, image pinned to 4.39) |
 | AI | `open-webui` (https://webui.ftoralesacosta.me, host network, port 3000; web search via SearXNG), `searxng` (LAN only) |
-| Media | `jellyfin`, `sonarr`, `radarr`, `lidarr` (music), `bazarr`, `prowlarr`, `sabnzbd`, `qbittorrent` (via `vpn` = gluetun), `flaresolverr`, `bindery` (books, Readarr successor), `kavita` (ebook/comic reader) |
+| Media | `jellyfin`, `sonarr`, `radarr`, `lidarr` (music), `bazarr`, `prowlarr`, `sabnzbd`, `qbittorrent` (via `vpn` = gluetun), `flaresolverr`, `bindery` (books, Readarr successor), `kavita` (ebook/comic reader), `seerr` (request manager, Overseerr successor) |
 | Home | `homeassistant`, `homebridge` |
 | Other | `mc` (Minecraft), `actual` (Actual Budget), `website` |
 
@@ -88,8 +88,10 @@ The same pattern applies to any other variable: edit `.env`, then `docker compos
   authenticated username as `Remote-User`): `ha.` (group `admin` only; HA `/api/` and
   `/auth/token` bypass so the companion app works), `jellyfin.` (any Authelia user), and
   `bindery.` (groups `admin` + `family`; Bindery runs auth mode "proxy" and consumes
-  `Remote-User`, so a passing Authelia session logs straight in — no second login; other
-  Authelia users auto-provision as role `user`). Never route to Bindery from an NPM
+`Remote-User`, so a passing Authelia session logs straight in — no second login; other
+   Authelia users auto-provision as role `user`), the *arr stack (groups `admin` + `family`,
+   `/api` bypassed for API-key clients), and `seerr.` (same shape as the *arr rule). Never
+   route to Bindery from an NPM
   host/location without the snippet — a client could forge the identity header. Who may
   pass is set by `access_control` in `authelia/configuration.yml`.
 - **Jellyfin on the TV/phone apps**: use the internal-only address `http://192.168.4.51:8443`

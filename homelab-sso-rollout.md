@@ -257,6 +257,18 @@ the Two-Factor Authentication section of `authelia/README.md`):
 - `fernando` enrolled both methods (1 row each in `totp_configurations` /
   `webauthn_credentials`). Family/friends self-enroll when prompted.
 
+## Update 2026-11-06 — Seerr (the "overseer" app) added to the stack, behind the gate
+
+Seerr (`ghcr.io/seerr-team/seerr:latest` — the maintained successor to Overseerr/
+Jellyseerr; the project was renamed, so the service is named `seerr`) runs on proxy-net
+at `seerr:5055`, data in `${DOCKERDIR}/seerr/config` (image runs as UID 1000, `cap_drop:
+ALL`, healthcheck on `/api/v1/settings/public`). Public host `seerr.ftoralesacosta.me`:
+proxied CNAME added via the CF API, NPM host created with `add-host.sh --authelia`.
+Authelia rules (same shape as the *arr rule): `^/api([/?].*)?$` = bypass for API-key
+clients, everything else = `two_factor` for groups admin+family. Nightly backup stages
+`$V/seerr/config`. First-run setup (admin account, sonarr/radarr/Jellyfin integration)
+is done in its web UI.
+
 ## 7 — Current action checklist
 
 Already done in the repo:

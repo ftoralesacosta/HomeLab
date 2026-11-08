@@ -348,6 +348,32 @@ services:
       - /mnt/media/:/media
       - /mnt/data/Downloads/:/downloads
 
+  # Request manager (successor to Overseerr/Jellyseerr, now "Seerr"): the family
+  # requests movies/TV, sonarr/radarr fulfill them. The image runs as the node
+  # user (UID 1000) and drops all caps, so the config dir must be 1000:1000.
+  seerr:
+    image: ghcr.io/seerr-team/seerr:latest
+    container_name: seerr
+    init: true
+    restart: unless-stopped
+    networks:
+      - proxy-net
+    # No host ports: reached via NPM / other containers at seerr:5055.
+    environment:
+      - TZ=America/New_York
+    volumes:
+      - ${DOCKERDIR}/seerr/config:/app/config
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:5055/api/v1/settings/public || exit 1
+      start_period: 20s
+      timeout: 3s
+      interval: 15s
+      retries: 3
+    security_opt:
+      - no-new-privileges
+    cap_drop:
+      - ALL
+
   # --- Books (Readarr successor; Readarr was archived 2025-06 when its
   # metadata API died). Single Go binary, metadata from OpenLibrary /
   # Google Books / Hardcover (documented APIs, no scraping). Indexers and

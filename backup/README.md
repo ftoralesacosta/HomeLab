@@ -79,6 +79,7 @@ Files land in `/tmp/data/staging/<app>/` (owned by root). To put one app back: `
 |---|---|
 | `actual-budget` | `~/.volumes/actual-budget/data` |
 | `sonarr` / `radarr` / `prowlarr` | `~/.volumes/<app>/config` |
+| `seerr` | `~/.volumes/seerr/config` |
 | `bazarr`, `sabnzbd`, `qbittorrent`, `nginx-proxy-manager`, `home-assistant`, `homebridge`, `authelia` | `~/.volumes/<app>` |
 | `jellyfin` | `~/.volumes/jellyfin/config` |
 | `open-webui` | docker volume `open-webui_open-webui` (`/var/lib/docker/volumes/open-webui_open-webui/_data`) |

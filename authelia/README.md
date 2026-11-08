@@ -65,6 +65,7 @@ docker exec authelia authelia storage user webauthn delete <username> --all --co
 | Jellyfin | Web login goes through the Authelia **gate** (`admin`+`family` → `two_factor`, any other user → `one_factor`), but there is no credential integration — Jellyfin's own login still applies. TV/phone apps cannot do a browser login; planned: Jellyfin SSO plugin (web login only) |
 | Bindery | **Proxy SSO**: gate snippet forwards `Remote-User`; Bindery auth mode "proxy" (set via API, `PUT /api/v1/auth/mode`). Passing users log straight in; new usernames auto-provision as role `user`. Gate rule: groups `admin` + `family` |
 | *arr (prowlarr/lidarr/sonarr/radarr) | **Gate + External auth**: gate snippet on all four hosts; apps run `AuthenticationMethod=External` (config.xml) so the gate login is the only login; Authelia bypasses `/api` + `/[0-9]+/api` for API-key clients; UI rule: `two_factor`, groups `admin` + `family` |
+| Seerr | **Gate**: same shape as the *arr rule — `/api` bypassed for API-key clients, UI `two_factor` for groups `admin` + `family` (request manager; its own logins stay for the API only) |
 | Others | Own logins. NPM can add an Authelia **gate** per host (Access Lists → method *Authelia*) |
 
 Add an OIDC app: add a client under `identity_providers.oidc.clients` in `configuration.yml` (template in
