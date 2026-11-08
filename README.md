@@ -97,8 +97,9 @@ The same pattern applies to any other variable: edit `.env`, then `docker compos
 - **Jellyfin auth (2026-11-08)**: no gate — the login page is public and credentials
   are Authelia's. The Authelia-Auth plugin validates the form/API (Finamp, Apple TV)
   against Authelia 1FA and auto-creates users (admin from the `admin` group; grant
-  libraries once per new user). A "Sign in with SSO" login-disclaimer link is the 2FA
-  web door (OIDC client `jellyfin`). TV/phone: internal-only `http://192.168.4.51:8443`
+  libraries once per new user). An OIDC "Sign in with SSO" door (SSO-Auth plugin +
+  its Authelia client) was tried and removed the same day — the form is the login, 1FA.
+  TV/phone: internal-only `http://192.168.4.51:8443`
   (`jellyfin-internal-proxy` → `jellyfin:8096`) with Authelia username+password.
   Break-glass if Authelia is down: `authelia/jellyfin-breakglass.sh`.
 - Plan and status of the wider rollout: [homelab-sso-rollout.md](homelab-sso-rollout.md).
