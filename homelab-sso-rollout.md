@@ -269,6 +269,31 @@ clients, everything else = `two_factor` for groups admin+family. Nightly backup 
 `$V/seerr/config`. First-run setup (admin account, sonarr/radarr/Jellyfin integration)
 is done in its web UI.
 
+## Update 2026-11-08 — Jellyfin auth moved into Authelia; NPM gate removed
+
+Jellyfin no longer keeps its own credentials. The `jellyfin.` gate was removed from NPM
+(the old `two_factor` access rule stays in the config, dormant), so the public login page
+is Jellyfin itself. Two plugins under `~/.volumes/jellyfin/config/plugins/`:
+
+- **SSO-Auth 5.1.1** (`sso/`, K0lin fork, ABI 12): OIDC client `jellyfin` in
+  `configuration.yml` (`consent_mode: implicit`, scheme override https, redirect
+  `/sso/OID/redirect/authelia`). The "Sign in with SSO" button is a markdown link in
+  Branding → Login disclaimer — the 2FA (TOTP) web door.
+- **Authelia-Auth 1.0.17** (`authelia/`, nikarh): the native form **and API** (Finamp,
+  Apple TV) validate username+password against Authelia 1FA, server-side
+  (POST `/api/firstfactor`, then GET `/api/authz/auth-request`). Config gotchas: the
+  plugin's Authelia server must be `https://auth.ftoralesacosta.me` (the session cookie
+  domain — `http://authelia:9091` fails on the session provider), and its Jellyfin URL
+  `https://jellyfin.ftoralesacosta.me/authz` matches the new **one_factor** access rule
+  `^/authz$` (subject admin+family). New users auto-create on first login with random
+  local passwords; the `admin` group grants Jellyfin admin; libraries are granted
+  manually once per user.
+- `fernando` is switched to the Authelia provider (form/API logins use the Authelia
+  password; the SSO link still works). Local Jellyfin passwords remain as rollback:
+  break-glass `authelia/jellyfin-breakglass.sh` stops Jellyfin, flips a user's provider
+  back to Default in sqlite, and restarts — sign in with the old local password while
+  Authelia is down, switch back after it recovers.
+
 ## 7 — Current action checklist
 
 Already done in the repo:

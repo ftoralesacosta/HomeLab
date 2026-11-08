@@ -86,7 +86,7 @@ The same pattern applies to any other variable: edit `.env`, then `docker compos
 - **Authelia gate** (NPM host → Advanced: `include /snippets/authelia.conf;`, file
   `nginx-proxy-manager/snippets/authelia.conf`; the snippet also forwards the
   authenticated username as `Remote-User`): `ha.` (group `admin` only; HA `/api/` and
-  `/auth/token` bypass so the companion app works), `jellyfin.` (any Authelia user), and
+  `/auth/token` bypass so the companion app works), and
   `bindery.` (groups `admin` + `family`; Bindery runs auth mode "proxy" and consumes
 `Remote-User`, so a passing Authelia session logs straight in — no second login; other
    Authelia users auto-provision as role `user`), the *arr stack (groups `admin` + `family`,
@@ -94,8 +94,13 @@ The same pattern applies to any other variable: edit `.env`, then `docker compos
    route to Bindery from an NPM
   host/location without the snippet — a client could forge the identity header. Who may
   pass is set by `access_control` in `authelia/configuration.yml`.
-- **Jellyfin on the TV/phone apps**: use the internal-only address `http://192.168.4.51:8443`
-  (`jellyfin-internal-proxy` → `jellyfin:8096`); apps cannot log in through Authelia. The public host is for browsers.
+- **Jellyfin auth (2026-11-08)**: no gate — the login page is public and credentials
+  are Authelia's. The Authelia-Auth plugin validates the form/API (Finamp, Apple TV)
+  against Authelia 1FA and auto-creates users (admin from the `admin` group; grant
+  libraries once per new user). A "Sign in with SSO" login-disclaimer link is the 2FA
+  web door (OIDC client `jellyfin`). TV/phone: internal-only `http://192.168.4.51:8443`
+  (`jellyfin-internal-proxy` → `jellyfin:8096`) with Authelia username+password.
+  Break-glass if Authelia is down: `authelia/jellyfin-breakglass.sh`.
 - Plan and status of the wider rollout: [homelab-sso-rollout.md](homelab-sso-rollout.md).
 
 ---

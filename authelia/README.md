@@ -34,8 +34,8 @@ someone changes a password; that is expected.
 ## Two-Factor Authentication
 
 Users in `admin`/`family` need a password **plus** a second factor on every gated app:
-*arr, Bindery, Home Assistant, Jellyfin, and Open WebUI (OIDC client policy `two_factor`).
-Friends (no group) are unaffected on Jellyfin and the portal (`one_factor`), but Open WebUI
+*arr, Bindery, Home Assistant, and Open WebUI (OIDC client policy `two_factor`).
+Friends (no group) are unaffected on the portal (`one_factor`), but Open WebUI
 now asks *everyone* for a second factor. Methods (enabled by default in 4.39; branding
 `ftoralesacosta.me`):
 
@@ -62,7 +62,7 @@ docker exec authelia authelia storage user webauthn delete <username> --all --co
 | App | How it uses Authelia |
 |---|---|
 | Open WebUI | **OIDC login** (client `open-webui`, policy `two_factor` — applies to all users, friends included). New Authelia users get a *pending* Open WebUI account that an admin approves |
-| Jellyfin | Web login goes through the Authelia **gate** (`admin`+`family` → `two_factor`, any other user → `one_factor`), but there is no credential integration — Jellyfin's own login still applies. TV/phone apps cannot do a browser login; planned: Jellyfin SSO plugin (web login only) |
+| Jellyfin | **No gate** (removed 2026-11-08); the login page is public. **Authelia-Auth plugin** (`plugins/authelia`): form and API logins (Finamp, Apple TV) validate against Authelia 1FA — server-side `/api/firstfactor` + `/api/authz/auth-request`; the plugin's Authelia server must be `https://auth.ftoralesacosta.me` (session cookie domain), its Jellyfin URL `https://jellyfin.ftoralesacosta.me/authz` matches the one_factor `^/authz$` rule (admin+family). New users auto-create with unknowable local passwords; `admin` group grants Jellyfin admin; libraries granted manually once. **SSO-Auth plugin** (`plugins/sso`, OIDC client `jellyfin`, `consent_mode: implicit`): "Sign in with SSO" disclaimer link is the 2FA web door. Break-glass: `authelia/jellyfin-breakglass.sh` |
 | Bindery | **Proxy SSO**: gate snippet forwards `Remote-User`; Bindery auth mode "proxy" (set via API, `PUT /api/v1/auth/mode`). Passing users log straight in; new usernames auto-provision as role `user`. Gate rule: groups `admin` + `family` |
 | *arr (prowlarr/lidarr/sonarr/radarr) | **Gate + External auth**: gate snippet on all four hosts; apps run `AuthenticationMethod=External` (config.xml) so the gate login is the only login; Authelia bypasses `/api` + `/[0-9]+/api` for API-key clients; UI rule: `two_factor`, groups `admin` + `family` |
 | Seerr | **Gate**: same shape as the *arr rule — `/api` bypassed for API-key clients, UI `two_factor` for groups `admin` + `family` (request manager; its own logins stay for the API only) |

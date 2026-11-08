@@ -6,3 +6,4 @@ OpenWRT-BPI_R4/local/
 actual-ai/logs/
 backup/logs/
 *.bak.*
+backups/
