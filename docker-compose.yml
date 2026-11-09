@@ -112,17 +112,6 @@ services:
       - /home/fernando/HomeLab/HomeAssistant:/home/fernando/HomeLab/HomeAssistant
       - /etc/localtime:/etc/localtime:ro
 
-  jellyfin-internal-proxy:
-    image: nginx:stable-alpine
-    container_name: jellyfin-internal-proxy
-    restart: unless-stopped
-    networks:
-      - proxy-net
-    ports:
-      - '192.168.4.51:8443:8443'
-    volumes:
-      - ./jellyfin-internal-proxy/nginx.conf:/etc/nginx/nginx.conf:ro
-
   jellyfin:
     image: jellyfin/jellyfin:latest
     container_name: jellyfin
