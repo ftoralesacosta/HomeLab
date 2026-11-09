@@ -90,7 +90,7 @@ def restart_authelia():
     return False
 
 
-def notify_admin(username, displayname, email):
+def notify_admin(username, email):
     e = load_smtp()
     msg = EmailMessage()
     msg["From"] = e.get("MAIL_FROM") or e["SMTP_USER"]
@@ -98,9 +98,8 @@ def notify_admin(username, displayname, email):
     msg["Subject"] = f"Authelia signup request: {username}"
     msg.set_content(
         "New signup request (awaiting approval):\n\n"
-        f"  Display name: {displayname}\n"
-        f"  Username:     {username}\n"
-        f"  Email:        {email}\n"
+        f"  Username: {username}\n"
+        f"  Email:    {email}\n"
         f"  Time (UTC):   {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
         "The account exists with their chosen password and group [pending]:\n"
         f"  - they can already log in to https://auth.{DOMAIN} (portal only: set 2FA/passkey)\n"
@@ -145,8 +144,6 @@ PAGE_TMPL = """<!doctype html>
  <p class="sub">Fill this in once. You will get access after it is approved.</p>
  __ERROR__
  <form method="post">
-  <label>Display name</label>
-  <input name="displayname" required maxlength="60" value="__DISPLAYNAME__">
   <label>Username (lowercase, no spaces)</label>
   <input name="username" required pattern="[a-z0-9._-]{3,32}" value="__USERNAME__">
   <label>Email</label>
@@ -189,7 +186,6 @@ def render_page(error=None, old=None):
         "__ERROR__",
         f'<div class="err">{escape(error)}</div>' if error else "",
     )
-    h = h.replace("__DISPLAYNAME__", escape(o.get("displayname", "")))
     h = h.replace("__USERNAME__", escape(o.get("username", "")))
     h = h.replace("__EMAIL__", escape(o.get("email", "")))
     return h
@@ -212,16 +208,13 @@ def submit():
     if rate_limited(ip):
         return render_page(error="Too many requests. Try again later."), 429
     f = request.form
-    d = (f.get("displayname") or "").strip()
     u = (f.get("username") or "").strip()
     e = (f.get("email") or "").strip().lower()
     p1, p2 = f.get("password") or "", f.get("password2") or ""
-    old = {"displayname": d, "username": u, "email": e}
+    old = {"username": u, "email": e}
 
     err = None
-    if len(d) < 2 or len(d) > 60:
-        err = "Display name: 2-60 characters."
-    elif not USERNAME_RE.match(u):
+    if not USERNAME_RE.match(u):
         err = "Username: 3-32 characters, lowercase letters, digits, dot, underscore, dash."
     elif not EMAIL_RE.match(e):
         err = "Enter a valid email address."
@@ -240,11 +233,9 @@ def submit():
 
     try:
         h = PH.hash(p1)
-        de = d.replace("\\", "\\\\").replace('"', '\\"')
         entry = (
             f"    {u}:\n"
             f"        password: \"{h}\"\n"
-            f"        displayname: \"{de}\"\n"
             f"        email: {e}\n"
             f"        groups: [pending]\n"
             f"        disabled: false\n"
@@ -255,7 +246,7 @@ def submit():
             raise RuntimeError("config validation failed: " + v[-300:])
         if not restart_authelia():
             raise RuntimeError("authelia did not come back up")
-        notify_admin(u, d, e)
+        notify_admin(u, e)
     except Exception:
         return render_page(
             error="Something went wrong on our side; nothing was created. Try again later.",
