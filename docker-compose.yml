@@ -44,6 +44,24 @@ services:
       - ./authelia/auth_file.yml:/config/auth_file.yml
       - ${DOCKERDIR}/authelia/data:/config/data
 
+  # Self-service signup form: the public front door (NOT behind the Authelia gate).
+  # Newcomer picks their own username/email/password -> account created with
+  # group [pending] (portal login only; default_policy: deny keeps them out of
+  # every app) -> approval email to Fernando. Writes auth_file.yml the same way
+  # authelia/add-user.sh does (root alpine one-shot over the docker socket).
+  # Approve with: ~/HomeLab/authelia/approve-user.sh <user> [group]
+  signup:
+    build: ./signup
+    container_name: signup
+    restart: unless-stopped
+    group_add:
+      - "996"   # host docker group: the app drives one-shot alpine/authelia containers
+    networks:
+      - proxy-net
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./signup/smtp.env:/etc/signup/smtp.env:ro
+
   cloudflare-ddns:
     image: oznu/cloudflare-ddns:latest
     container_name: cloudflare-ddns
@@ -226,10 +244,10 @@ services:
       - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
       - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESS}
       - FIREWALL_ALLOWED_PORTS=8080
-      - SERVER_CITIES=New York
+      - SERVER_CITIES=Amsterdam
       # Proton NAT-PMP: forward one random port and tell qbittorrent to listen on it.
       - VPN_PORT_FORWARDING=on
-      - VPN_PORT_FORWARDING_UP_COMMAND=/bin/sh -c 'for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do if wget -q -O /dev/null --post-data "json={\"listen_port\":{{PORTS}},\"random_port\":false,\"upnp\":false}" http://127.0.0.1:8080/api/v2/app/setPreferences 2>/dev/null; then echo "qbittorrent moved to port {{PORTS}}"; exit 0; fi; sleep 1; done; echo "up-command gave up after 30s"; exit 1'
+      - VPN_PORT_FORWARDING_UP_COMMAND=/bin/sh -c 'for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do if wget -q -O /dev/null --post-data "json={\"listen_port\":{{PORTS}},\"random_port\":false,\"upnp\":false,\"current_network_interface\":\"\",\"current_interface_address\":\"\"}" http://127.0.0.1:8080/api/v2/app/setPreferences 2>/dev/null; then echo "qbittorrent moved to port {{PORTS}} and unbound from lo"; exit 0; fi; sleep 1; done; echo "up-command gave up after 30s"; exit 1'
       - VPN_PORT_FORWARDING_DOWN_COMMAND=/bin/sh -c 'wget -O- -nv --retry-connrefused --post-data "json={\"listen_port\":0,\"current_network_interface\":\"lo\"}" http://127.0.0.1:8080/api/v2/app/setPreferences'
       - TZ=America/New_York
         #- DOT_SERVERS=10.64.0.1,10.88.0.1

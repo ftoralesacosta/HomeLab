@@ -7,3 +7,5 @@ actual-ai/logs/
 backup/logs/
 *.bak.*
 backups/
+signup/smtp.env
+__pycache__/
