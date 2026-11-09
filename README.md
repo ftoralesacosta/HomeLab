@@ -106,6 +106,46 @@ The same pattern applies to any other variable: edit `.env`, then `docker compos
 
 ---
 
+## Downloads: *arrs, usenet, torrents
+
+Two transports, deliberately split:
+- **SABnzbd** (usenet) — direct internet, no VPN. Categories: `tv`, `audio` (Lidarr), etc.
+- **qBittorrent** (torrents) — network-shared with `vpn` (gluetun → ProtonVPN WireGuard),
+  category `tv-sonarr`. All torrent traffic traverses the tunnel.
+
+### VPN exit must be a P2P-enabled city
+
+ProtonVPN only allows BitTorrent on P2P-marked servers. **US exits (e.g. New York) are not
+P2P-enabled** and silently black-hole tracker/peer/DHT traffic while plain web (80/443)
+keeps working. Symptom: every torrent sits at `metaDL` ("qBittorrent is downloading
+metadata") at 0 B/s forever, trackers show "skipping tracker announce (unreachable)",
+while `docker exec vpn-gateway wget -qO- https://ipinfo.io/ip` succeeds.
+`SERVER_CITIES` in compose stays on a P2P city — **Amsterdam** (Proton's main P2P hub).
+
+### qB loopback-bind trap (self-healing since Nov 2026)
+
+The NAT-PMP **down**-command sets qB's `current_network_interface: "lo"` as a kill switch
+when the tunnel drops. The **up**-command used to restore only `listen_port`, so after any
+VPN blip qB stayed bound to loopback indefinitely: seeds visible in tracker lists, 58
+"connected" peers, 0 bytes — with the tunnel itself tested fine. The up-command now also
+clears `current_network_interface` / `current_interface_address`, making the kill switch
+self-healing. If torrents ever show seeds but 0 B/s again:
+`GET /api/v2/app/preferences` → `current_network_interface` should be `""`, not `lo`.
+
+### Magnet metadata stalling
+
+DHT metadata resolution through the tunnel is unreliable: a magnet from a healthy swarm
+can sit at `metaDL` indefinitely. If it hasn't resolved in ~10 min, inject the `.torrent`
+file — itorrents.org mirrors by infohash and qB merges it into the existing entry (same
+infohash, so Sonarr/Radarr tracking is unaffected):
+
+```sh
+curl -A "Mozilla/5.0" -o /tmp/x.torrent "https://itorrents.org/torrent/<INFOHASH>.torrent"
+# then add to qB via torrents/add (multipart, category tv-sonarr)
+```
+
+---
+
 ## Network
 
 | Item | Value |
