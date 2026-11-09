@@ -38,9 +38,28 @@ Run the commands in `~/HomeLab`.
 
 - Change one service at a time. Do not restart the full stack.
 - Do not use `docker compose down -v` or prune volumes. That deletes app data.
-- Proxy hosts are in NPM's database, not in this repo. Use `add-host.sh` or the NPM UI.
-- NPM UI: http://192.168.4.51:81 at home. Away: `ssh -L 8181:localhost:81 fernando@ftoralesacosta.me`,
-  then http://localhost:8181.
+
+## Proxy hosts (NPM)
+
+NPM keeps its proxy hosts in its own database, not in this repo. Change them in the NPM UI
+(http://192.168.4.51:81 at home; away: `ssh -L 8181:localhost:81 fernando@ftoralesacosta.me`, then
+http://localhost:8181), or with `nginx-proxy-manager/add-host.sh`. The script asks for the NPM
+admin password and does not store it.
+
+```bash
+add-host.sh --list                                    # all hosts: target, SSL, gate
+add-host.sh kavita.ftoralesacosta.me kavita:5000      # new host
+add-host.sh <name> <container>:<port> --authelia      # new host behind the gate
+add-host.sh <name> <container>:<port> --update ...    # change a host; the flags replace its settings
+add-host.sh --delete <name>                           # --dry-run shows a change, --help lists all flags
+```
+
+- Use the container name as the target, not the host IP. NPM shares `proxy-net` with the apps.
+- New hosts use the wildcard certificate `*.ftoralesacosta.me` (certificate 7). Force SSL,
+  WebSockets, HTTP/2 and "Block Common Exploits" are on by default.
+- A gated host also needs an `access_control` rule in Authelia. Until it has one, Authelia refuses everyone.
+- Errors: 401 = wrong email or password, 400 = the name exists or the target is wrong,
+  502 = wrong container or port, or the container is not on `proxy-net`.
 
 ## Secrets
 
@@ -83,7 +102,8 @@ gated apps need a second factor (TOTP or security key). Details: [authelia/READM
 | Jellyfin | Its own login form; a plugin checks the password against Authelia | admin, family |
 | Kavita, Actual | Their own login | — |
 
-A **gate** is one line in an NPM host's Advanced config: `include /snippets/authelia.conf;`.
+A **gate** is one line in an NPM host's Advanced config: `include /snippets/authelia.conf;`
+([snippet](nginx-proxy-manager/snippets/authelia.conf)).
 It sends visitors to the login page. `access_control` in `authelia/configuration.yml` decides who
 gets through.
 
@@ -127,8 +147,6 @@ Debian security updates install automatically, without reboots. Other updates ar
 ## Other documents
 
 - [authelia/README.md](authelia/README.md): users, groups, 2FA, OIDC apps
-- [nginx-proxy-manager/README.md](nginx-proxy-manager/README.md): `add-host.sh`
 - [backup/README.md](backup/README.md): nightly backup to the second NVMe and Google Drive, and restore
 - [OpenWRT-BPI_R4/README.md](OpenWRT-BPI_R4/README.md): router, fiber stick, recovery
 - [HomeAssistant/README.md](HomeAssistant/README.md), [ActualBudget/README.md](ActualBudget/README.md)
-- [homelab-sso-rollout.md](homelab-sso-rollout.md): history of the Authelia rollout

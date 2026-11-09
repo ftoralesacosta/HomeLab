@@ -25,7 +25,7 @@ Last verified 2026-11-04: a **full** restore from Google Drive (18,819 files, 1.
 
 | Included | Excluded (rebuildable) |
 |---|---|
-| Actual Budget, Sonarr, Radarr, Prowlarr, Bazarr, SABnzbd, qBittorrent, Jellyfin (DB, users, watch state, config), NPM (+ certs), Home Assistant, Homebridge, Authelia, Open WebUI, Hermes | media files, Jellyfin metadata/trickplay images, logs, caches, Hermes tools |
+| Actual Budget, Sonarr, Radarr, Lidarr, Prowlarr, Bazarr, Seerr, Bindery, Kavita, SABnzbd, qBittorrent, Jellyfin (DB, users, watch state, config), NPM (+ certs), Home Assistant, Homebridge, Authelia, Open WebUI, Hermes | media files, Jellyfin metadata/trickplay images, *arr cover art, logs, caches, Hermes tools |
 
 ## Secrets (`~/HomeLab/.env`)
 | Variable | Value |
@@ -78,8 +78,7 @@ Files land in `/tmp/data/staging/<app>/` (owned by root). To put one app back: `
 | Staging folder | Host path |
 |---|---|
 | `actual-budget` | `~/.volumes/actual-budget/data` |
-| `sonarr` / `radarr` / `prowlarr` | `~/.volumes/<app>/config` |
-| `seerr` | `~/.volumes/seerr/config` |
+| `sonarr`, `radarr`, `lidarr`, `prowlarr`, `seerr`, `bindery`, `kavita` | `~/.volumes/<app>/config` |
 | `bazarr`, `sabnzbd`, `qbittorrent`, `nginx-proxy-manager`, `home-assistant`, `homebridge`, `authelia` | `~/.volumes/<app>` |
 | `jellyfin` | `~/.volumes/jellyfin/config` |
 | `open-webui` | docker volume `open-webui_open-webui` (`/var/lib/docker/volumes/open-webui_open-webui/_data`) |

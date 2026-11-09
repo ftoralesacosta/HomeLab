@@ -63,7 +63,10 @@ do_stage() {
   stage sonarr         sonarr          "$V/sonarr/config"      ./logs ./logs.db ./logs.db-shm ./logs.db-wal ./MediaCover
   stage radarr         radarr          "$V/radarr/config"      ./logs ./logs.db ./logs.db-shm ./logs.db-wal ./MediaCover
   stage prowlarr       prowlarr        "$V/prowlarr/config"    ./logs ./logs.db ./logs.db-shm ./logs.db-wal
+  stage lidarr         lidarr          "$V/lidarr/config"      ./logs ./logs.db ./logs.db-shm ./logs.db-wal ./MediaCover
   stage seerr          seerr           "$V/seerr/config"
+  stage bindery        bindery         "$V/bindery/config"
+  stage kavita         kavita          "$V/kavita/config"      ./logs ./cache ./cache-long ./temp ./cache.db ./cache.db-shm ./cache.db-wal
   stage bazarr         bazarr          "$V/bazarr"             ./config/log
   stage sabnzbd        sabnzbd         "$V/sabnzbd"            ./config/logs
   stage qbittorrent    qbittorrent     "$V/qbittorrent"
