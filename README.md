@@ -1,174 +1,134 @@
 # HomeLab
 
-Docker Compose stack on the Debian server (`debian`, 192.168.4.51), plus the host-level pieces
-around it (Hermes agent, router). Public domain: `ftoralesacosta.me` (Cloudflare).
+This repo is the configuration for my home server, `debian` (192.168.4.51). Most services run in one
+Docker Compose stack. The repo also holds the host setup around it: Hermes, the router, backups
+and hardening. The domain is `ftoralesacosta.me`, and its DNS is on Cloudflare.
 
 ```
-Verizon fiber ─► BPI-R4 router (OpenWrt) ─► LAN 192.168.4.0/22 ─► debian (this repo)
-                 ports 22/80/443/25565 ─────────────────────────► debian
+Verizon fiber ─► BPI-R4 router (OpenWrt) ─► LAN 192.168.4.0/22 ─► debian
+                 forwards TCP 22, 80, 443, 25565 ───────────────► debian
 ```
 
-## Services (docker-compose.yml)
+## Services
+
+Each web app has its own subdomain, for example `sonarr.ftoralesacosta.me`.
 
 | Area | Services |
 |---|---|
-| Edge | `reverse-proxy` (Nginx Proxy Manager: 80/443; admin UI **not public**: http://192.168.4.51:81 at home, away `ssh -L 8181:localhost:81 fernando@ftoralesacosta.me` → http://localhost:8181), `cloudflare-ddns` (favonia; one container updates the DNS-only `ftoralesacosta.me` + `mc.` records) |
-| Auth | `authelia` (https://auth.ftoralesacosta.me, image pinned to 4.39), `signup` (https://signup.ftoralesacosta.me, self-service → `pending`) |
-| AI | `open-webui` (https://webui.ftoralesacosta.me, host network, port 3000; web search via SearXNG), `searxng` (LAN only) |
-| Media | `jellyfin`, `sonarr`, `radarr`, `lidarr` (music), `bazarr`, `prowlarr`, `sabnzbd`, `qbittorrent` (via `vpn` = gluetun), `flaresolverr`, `bindery` (books, Readarr successor), `kavita` (ebook/comic reader), `seerr` (request manager, Overseerr successor) |
-| Home | `homeassistant`, `homebridge` |
-| Other | `mc` (Minecraft), `actual` (Actual Budget), `website` |
+| Edge | `reverse-proxy`: Nginx Proxy Manager (NPM) on 80/443, admin UI on port 81 (LAN only). `cloudflare-ddns`: keeps `ftoralesacosta.me` and `mc.` on the home IP |
+| Login | `authelia` (auth.): single sign-on and 2FA. `signup` (signup.): public form to request an account |
+| AI | `open-webui` (webui.), `searxng` (web search, LAN only). Hermes agent: systemd service `hermes-gateway`, not Docker, API on 127.0.0.1:8642 |
+| Media | `jellyfin` (player). `sonarr`, `radarr`, `lidarr` (TV, movies, music), `prowlarr` + `flaresolverr` (indexers), `bazarr` (subtitles), `seerr` (family requests). `bindery` + `kavita` (books: download + read) |
+| Downloads | `sabnzbd` (usenet), `qbittorrent` (torrents, through the `vpn` container) |
+| Home | `homeassistant` (ha.), `homebridge` |
+| Other | `actual` + `actual-ai` (budget.), `mc` (Minecraft, port 25565), `website` (ftoralesacosta.me) |
 
-Start / update: `docker compose up -d [service]` in this directory.
+## Daily operations
 
-Proxy hosts (`*.ftoralesacosta.me` → containers) live in NPM's database, not in this repo —
-manage them in the UI (http://192.168.4.51:81) or with
-[`nginx-proxy-manager/add-host.sh`](nginx-proxy-manager/README.md).
+Run the commands in `~/HomeLab`.
 
-Not in this compose file:
-- **Hermes agent**: systemd service `hermes-gateway` (user `hermes`, `/opt/hermes-agent`,
-  API on 127.0.0.1:8642). Open WebUI uses it as a second model backend.
-
----
-
-## Secrets: one file, `.env`
-
-All secrets live in **`~/HomeLab/.env`** (owner `fernando`, mode `600`, gitignored).
-`.env.example` lists every variable with placeholders.
-
-| Variable | Used by |
+| Task | Command |
 |---|---|
-| `COREWEAVE_API_KEY`, `COREWEAVE_API_BASE` | Open WebUI, Hermes, shells |
-| `HERMES_API_KEY` | Open WebUI (client) and Hermes (as `API_SERVER_KEY`) |
-| `WEBUI_SECRET_KEY`, `OAUTH_CLIENT_SECRET` | Open WebUI |
-| `GMAIL_APP_PASSWORD` | Authelia (email notifier) |
-| `NPM_ADMIN_EMAIL` | `nginx-proxy-manager/add-host.sh` CLI (admin password is prompted, never stored) |
-| `Cloudflare_API_KEY`, `WIREGUARD_*`, `SEARXNG_SECRET`, `DOMAIN_NAME`, `DOCKERDIR` | the containers that reference them in docker-compose.yml |
+| Start or update one service | `docker compose up -d <service>` |
+| Get a newer image | `docker compose pull <service> && docker compose up -d <service>` |
+| Add a subdomain | `nginx-proxy-manager/add-host.sh <name>.ftoralesacosta.me <container>:<port> [--authelia]` |
+| Add a user | `authelia/add-user.sh <user> <email> "<Name>" <group>` |
+| Approve a signup | `authelia/approve-user.sh <user> [family\|friends]` |
+| Harden a fresh install | `sudo bash server/harden-host.sh` |
 
-How each consumer gets its values:
-- **Containers**: Compose substitutes `${VAR}` from `.env`. A container receives only the
-  variables listed in its own `environment:` block, not the whole file.
-- **Shells**: `~/.bashrc` exports only `COREWEAVE_API_KEY`, `COREWEAVE_API_BASE`, and `HERMES_API_KEY`
-  from `.env`.
-- **Hermes**: the `hermes` user **cannot read `.env`**. `hermes-env.service` (runs as root just
-  before Hermes) copies only `COREWEAVE_API_KEY` and `HERMES_API_KEY` (renamed to
-  `API_SERVER_KEY`) into the root-only file `/run/hermes-gateway.env`, which systemd loads into
-  Hermes. Files: [`systemd/`](systemd/). Install or reinstall:
-  `sudo bash ~/HomeLab/systemd/install-hermes-env.sh`.
-  The `hermes` user is deliberately **not** in the `docker` group (that group is root-equivalent)
-  or the `fernando` group.
+- Change one service at a time. Do not restart the full stack.
+- Do not use `docker compose down -v` or prune volumes. That deletes app data.
+- Proxy hosts are in NPM's database, not in this repo. Use `add-host.sh` or the NPM UI.
+- NPM UI: http://192.168.4.51:81 at home. Away: `ssh -L 8181:localhost:81 fernando@ftoralesacosta.me`,
+  then http://localhost:8181.
 
-Other secret files (gitignored, real values only on the server):
-`authelia/configuration.yml` (JWT/storage/OIDC secrets), `authelia/users/auth_file.yml` (users),
-`signup/smtp.env`.
+## Secrets
 
-### Change the CoreWeave API key
+All secrets are in `~/HomeLab/.env` (mode `600`, not in git). [.env.example](.env.example) lists each
+variable. A container gets only the variables in its own `environment:` block.
 
-1. Edit `COREWEAVE_API_KEY=` in `~/HomeLab/.env` (no quotes). Test it:
-   `curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer <key>" https://api.inference.wandb.ai/v1/models` → `200`.
-2. `cd ~/HomeLab && docker compose up -d open-webui`
-3. `sudo systemctl restart hermes-gateway`
+Other secret files, also only on the server: `authelia/configuration.yml`,
+`authelia/users/auth_file.yml`, `signup/smtp.env`.
 
-The same pattern applies to any other variable: edit `.env`, then `docker compose up -d <service>`
-(and restart `hermes-gateway` if it is `HERMES_API_KEY`).
+Hermes cannot read `.env`. Before Hermes starts, `hermes-env.service` copies its two keys into the
+root-only file `/run/hermes-gateway.env` (install: `sudo bash systemd/install-hermes-env.sh`). The
+`hermes` user is not in the `docker` group, because that group gives root access.
 
----
+To change a secret:
+1. Edit the value in `.env` (no quotes).
+2. Run `docker compose up -d <service>` for each service that uses it.
+3. For `COREWEAVE_API_KEY` or `HERMES_API_KEY`: also `sudo systemctl restart hermes-gateway`.
+4. For `GMAIL_APP_PASSWORD`: also `python3 signup/extract_smtp.py && docker compose up -d signup`.
 
-## Single sign-on (Authelia)
+## Login and access (Authelia)
 
-- Login page: https://auth.ftoralesacosta.me (users in `authelia/users/auth_file.yml`, see
-  [authelia/README.md](authelia/README.md)). Session cookie covers all `*.ftoralesacosta.me`.
-- **Open WebUI** uses Authelia as its OIDC provider and redirects straight to the Authelia login
-  (`OAUTH_AUTO_REDIRECT=true`, `ENABLE_LOGIN_FORM=false`). Only groups admin/family/friends may
-  complete the OIDC login (Authelia policy `approved`); new users get a *pending* Open WebUI account
-  that an admin approves. Accounts are **not** merged by email (signup emails are unverified). **If Authelia is down**: password login still works at
-  https://webui.ftoralesacosta.me/auth?form=1 (Open WebUI email + password).
-- Adding an OIDC app: add a client under `identity_providers.oidc.clients` in
-  `authelia/configuration.yml` (template in `configuration.example.yml`), restart `authelia`.
-- **Authelia gate** (NPM host → Advanced: `include /snippets/authelia.conf;`, file
-  `nginx-proxy-manager/snippets/authelia.conf`; the snippet also forwards the
-  authenticated username as `Remote-User`): `ha.` (group `admin` only; HA `/api/` and
-  `/auth/token` bypass so the companion app works), and
-  `bindery.` (groups `admin` + `family`; Bindery runs auth mode "proxy" and consumes
-`Remote-User`, so a passing Authelia session logs straight in — no second login; other
-   Authelia users auto-provision as role `user`), the *arr stack (groups `admin` + `family`,
-   `/api` bypassed for API-key clients), `seerr.` (same shape as the *arr rule), `bazarr.`
-   (admin + family), and the download clients `sabnzbd.` + `qbittorrent.` (admin only, no
-   bypass — internal clients use the container names). Never
-   route to Bindery from an NPM
-  host/location without the snippet — a client could forge the identity header. Who may
-  pass is set by `access_control` in `authelia/configuration.yml`.
-- **Jellyfin auth (2026-11-08)**: no gate — the login page is public and credentials
-  are Authelia's. The Authelia-Auth plugin validates the form/API (Finamp, Apple TV)
-  against Authelia 1FA and auto-creates users (admin from the `admin` group; grant
-  libraries once per new user). An OIDC "Sign in with SSO" door (SSO-Auth plugin +
-  its Authelia client) was tried and removed the same day — the form is the login, 1FA.
-  TV/phone: use `https://jellyfin.ftoralesacosta.me` — the router's dnsmasq
-  split-DNS (`address=` records in /etc/config/dhcp) resolves it to
-  192.168.4.51 for LAN clients, so media stays on the LAN; remote clients
-  go via Cloudflare. Same Authelia username+password.
-  Break-glass if Authelia is down: `authelia/jellyfin-breakglass.sh`.
-- Plan and status of the wider rollout: [homelab-sso-rollout.md](homelab-sso-rollout.md).
+https://auth.ftoralesacosta.me is the login for most apps. One login covers all subdomains, and
+gated apps need a second factor (TOTP or security key). Details: [authelia/README.md](authelia/README.md).
 
----
+| Group | Access |
+|---|---|
+| `admin` | Everything |
+| `family` | Media apps and Open WebUI |
+| `friends` | Open WebUI only |
+| `pending` | Nothing. New signups wait here until I approve them |
 
-## Downloads: *arrs, usenet, torrents
+| App | How it logs in | Who |
+|---|---|---|
+| Home Assistant | Gate (the companion app uses HA tokens on `/api/` and `/auth/token`) | admin |
+| SABnzbd, qBittorrent | Gate | admin |
+| *arr apps, Seerr | Gate. `/api` skips the gate for API-key clients | admin, family |
+| Bazarr | Gate, plus its own login | admin, family |
+| Bindery | Gate. Bindery takes the user name from the gate | admin, family |
+| Open WebUI | OIDC ("Continue with Authelia"), then I approve the account | admin, family, friends |
+| Jellyfin | Its own login form; a plugin checks the password against Authelia | admin, family |
+| Kavita, Actual | Their own login | — |
 
-Two transports, deliberately split:
-- **SABnzbd** (usenet) — direct internet, no VPN. Categories: `tv`, `audio` (Lidarr), etc.
-- **qBittorrent** (torrents) — network-shared with `vpn` (gluetun → ProtonVPN WireGuard),
-  category `tv-sonarr`. All torrent traffic traverses the tunnel.
+A **gate** is one line in an NPM host's Advanced config: `include /snippets/authelia.conf;`.
+It sends visitors to the login page. `access_control` in `authelia/configuration.yml` decides who
+gets through.
 
-### VPN exit must be a P2P-enabled city
+Why:
+- **Bindery must always have the gate.** It trusts the `Remote-User` header. Without the gate, a
+  visitor could send any user name.
+- **The download clients have no `/api` exception.** The *arr apps reach them inside Docker, so
+  nothing outside needs their API.
+- **Jellyfin has no gate.** TV and phone apps cannot show a web login page.
+- **Open WebUI does not link accounts by email.** Signup does not verify emails, so somebody could
+  sign up with your address and take over your account.
 
-ProtonVPN only allows BitTorrent on P2P-marked servers. **US exits (e.g. New York) are not
-P2P-enabled** and silently black-hole tracker/peer/DHT traffic while plain web (80/443)
-keeps working. Symptom: every torrent sits at `metaDL` ("qBittorrent is downloading
-metadata") at 0 B/s forever, trackers show "skipping tracker announce (unreachable)",
-while `docker exec vpn-gateway wget -qO- https://ipinfo.io/ip` succeeds.
-`SERVER_CITIES` in compose stays on a P2P city — **Amsterdam** (Proton's main P2P hub).
+If Authelia is down: Open WebUI has a password login at `/auth?form=1`, and
+`authelia/jellyfin-breakglass.sh` gives your Jellyfin user a local password again.
 
-### qB loopback-bind trap (self-healing since Nov 2026)
+## Downloads
 
-The NAT-PMP **down**-command sets qB's `current_network_interface: "lo"` as a kill switch
-when the tunnel drops. The **up**-command used to restore only `listen_port`, so after any
-VPN blip qB stayed bound to loopback indefinitely: seeds visible in tracker lists, 58
-"connected" peers, 0 bytes — with the tunnel itself tested fine. The up-command now also
-clears `current_network_interface` / `current_interface_address`, making the kill switch
-self-healing. If torrents ever show seeds but 0 B/s again:
-`GET /api/v2/app/preferences` → `current_network_interface` should be `""`, not `lo`.
+SABnzbd connects directly. qBittorrent shares the network of the `vpn` container (gluetun,
+ProtonVPN WireGuard), so all torrent traffic goes through the VPN.
 
-### Magnet metadata stalling
-
-DHT metadata resolution through the tunnel is unreliable: a magnet from a healthy swarm
-can sit at `metaDL` indefinitely. If it hasn't resolved in ~10 min, inject the `.torrent`
-file — itorrents.org mirrors by infohash and qB merges it into the existing entry (same
-infohash, so Sonarr/Radarr tracking is unaffected):
-
-```sh
-curl -A "Mozilla/5.0" -o /tmp/x.torrent "https://itorrents.org/torrent/<INFOHASH>.torrent"
-# then add to qB via torrents/add (multipart, category tv-sonarr)
-```
-
----
+| Symptom | Cause | Fix |
+|---|---|---|
+| All torrents stay at "downloading metadata", but the VPN has web access | The VPN server does not allow P2P (for example New York) | Keep `SERVER_CITIES` on a P2P city. We use Amsterdam |
+| Seeds are visible, but 0 B/s | qBittorrent is still bound to `lo` after a VPN drop | The VPN up-command fixes this by itself. Check `/api/v2/app/preferences`: `current_network_interface` must be `""` |
+| One magnet stays at "downloading metadata" for 10+ minutes | DHT through the VPN is unreliable | Get the file with `curl -A "Mozilla/5.0" -o /tmp/x.torrent "https://itorrents.org/torrent/<INFOHASH>.torrent"` and add it to qBittorrent (category `tv-sonarr`). Sonarr and Radarr are not affected |
 
 ## Network
 
 | Item | Value |
 |---|---|
-| Router | Banana Pi BPI-R4, official OpenWrt 25.12, LAN gateway **192.168.4.1** (web UI http://192.168.4.1, LAN only); see [OpenWRT-BPI_R4/](OpenWRT-BPI_R4/README.md) |
-| Internet | Verizon Fios via a GPON SFP stick in the router (no Verizon ONT/router) |
-| Server | `debian` = **192.168.4.51** (DHCP reservation), Wi-Fi `wlp130s0` |
-| Port forwards → 192.168.4.51 | TCP 22 (SSH), 80 + 443 (Nginx Proxy Manager), 25565 (Minecraft) |
-| Public IP | dynamic; `cloudflare-ddns*` containers update `ftoralesacosta.me` and `mc.` within ~5 min |
-| Remote router access | SSH tunnel: `ssh -L 8443:192.168.4.1:443 fernando@ftoralesacosta.me`, then https://localhost:8443 |
+| Internet | Verizon Fios through a GPON SFP stick in the router (no Verizon ONT or router) |
+| Router | Banana Pi BPI-R4, OpenWrt 25.12, 192.168.4.1. Away: `ssh -L 8443:192.168.4.1:443 fernando@ftoralesacosta.me`, then https://localhost:8443 |
+| Server | 192.168.4.51 (DHCP reservation), Wi-Fi `wlp130s0` |
+| Port forwards | TCP 22 (SSH), 80 + 443 (NPM), 25565 (Minecraft) |
+| DNS | Subdomains go through the Cloudflare proxy. `ftoralesacosta.me` and `mc.` are DNS-only, because Minecraft is not HTTP |
+| Jellyfin at home | The router's DNS sends `jellyfin.ftoralesacosta.me` to 192.168.4.51, so media stays on the LAN |
 
-Hard-coded LAN addresses in this repo: SearXNG binds `127.0.0.1:8888` (Open WebUI web search,
-Hermes) and `192.168.4.51:8888` (LAN browser access). NPM host `ha` → `192.168.4.51:8123`.
+Security: SSH accepts keys only, with no root login. fail2ban bans repeated failures (never the LAN).
+Debian security updates install automatically, without reboots. Other updates are manual.
 
-Router setup (OpenWrt, GPON fiber stick, patches, recovery): [OpenWRT-BPI_R4/](OpenWRT-BPI_R4/README.md).
+## Other documents
 
-Host hardening (fail2ban with the journald backend, security-only unattended-upgrades, no auto-reboot):
-`sudo bash ~/HomeLab/server/harden-host.sh` (idempotent; re-run after a reinstall).
-
-Backups (nightly restic → 2nd NVMe + Google Drive, restore steps): [backup/README.md](backup/README.md).
+- [authelia/README.md](authelia/README.md): users, groups, 2FA, OIDC apps
+- [nginx-proxy-manager/README.md](nginx-proxy-manager/README.md): `add-host.sh`
+- [backup/README.md](backup/README.md): nightly backup to the second NVMe and Google Drive, and restore
+- [OpenWRT-BPI_R4/README.md](OpenWRT-BPI_R4/README.md): router, fiber stick, recovery
+- [HomeAssistant/README.md](HomeAssistant/README.md), [ActualBudget/README.md](ActualBudget/README.md)
+- [homelab-sso-rollout.md](homelab-sso-rollout.md): history of the Authelia rollout
