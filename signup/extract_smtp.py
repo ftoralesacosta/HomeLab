@@ -1,6 +1,6 @@
 """One-shot: build signup/smtp.env from the live config + .env.
 
-Runs as root in a container (the files are root-owned 600). Prints nothing
+Runs in a container with ~/HomeLab mounted at /ro (configuration.yml and .env are mode 600). Prints nothing
 sensitive: only a confirmation.
 """
 import os
@@ -21,7 +21,7 @@ def load_env(p):
 env = load_env("/ro/.env")
 cfg = yaml.safe_load(open("/ro/authelia/configuration.yml"))
 smtp = cfg["notifier"]["smtp"]
-users = yaml.safe_load(open("/ro/authelia/auth_file.yml"))["users"]
+users = yaml.safe_load(open("/ro/authelia/users/auth_file.yml"))["users"]
 me = next(v for k, v in users.items() if k.lower() == "fernando")
 
 from urllib.parse import urlparse

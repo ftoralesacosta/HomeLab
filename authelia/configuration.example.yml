@@ -34,7 +34,9 @@ storage:
 authentication_backend:
   # 4.38: backend is selected by which block is present; no 'type' key.
   file:
-    path: /config/auth_file.yml
+    path: /config/users/auth_file.yml   # ./authelia/users is mounted as a directory
+    # reload when the file changes (signup, add-user.sh, approve-user.sh) - no restart needed
+    watch: true
     # log in / reset password with the username OR the email address
     search:
       email: true
@@ -86,12 +88,24 @@ access_control:
         - "group:family"
     # Bindery (proxy-auth SSO: snippet forwards Remote-User, Bindery auth mode
     # "proxy"): admin + family pass; friends get no group, so they don't.
-    # ha./jellyfin. rules live only in the live configuration.yml.
     - domain: "bindery.ftoralesacosta.me"
       policy: two_factor
       subject:
         - "group:admin"
         - "group:family"
+    # Download clients: admin only, fully gated (no /api bypass - the *arrs and
+    # Bindery reach sabnzbd:8080 / vpn-gateway:8080 directly over proxy-net).
+    - domain:
+      - "sabnzbd.ftoralesacosta.me"
+      - "qbittorrent.ftoralesacosta.me"
+      policy: two_factor
+      subject: "group:admin"
+    - domain: "bazarr.ftoralesacosta.me"
+      policy: two_factor
+      subject:
+        - "group:admin"
+        - "group:family"
+    # ha./jellyfin./seerr. rules live only in the live configuration.yml.
 
 # OIDC provider (SSO for apps that support OpenID Connect, e.g. Open WebUI).
 # Generate with the authelia image:
@@ -109,17 +123,28 @@ identity_providers:
           -----BEGIN PRIVATE KEY-----
           REPLACE_ME
           -----END PRIVATE KEY-----
+    # Who may log in to OIDC apps: approved groups only (a fresh [pending]
+    # signup must never complete an OIDC login, e.g. into Open WebUI).
+    authorization_policies:
+      approved:
+        default_policy: 'deny'
+        rules:
+          - policy: 'two_factor'
+            subject:
+              - 'group:admin'
+              - 'group:family'
+              - 'group:friends'
     # Put the user claims in the ID token too (4.39 serves them only via userinfo by default).
     claims_policies:
       default:
         id_token: ['email', 'email_verified', 'name', 'preferred_username', 'groups']
     clients:
-      # Open WebUI: plaintext secret goes in /opt/open-webui/.env as OAUTH_CLIENT_SECRET.
+      # Open WebUI: plaintext secret goes in ~/HomeLab/.env as OAUTH_CLIENT_SECRET.
       - client_id: 'open-webui'
         client_name: 'Open WebUI'
         client_secret: '$pbkdf2-sha512$REPLACE_WITH_DIGEST'
         public: false
-        authorization_policy: 'two_factor'
+        authorization_policy: 'approved'
         claims_policy: 'default'
         require_pkce: false
         redirect_uris:

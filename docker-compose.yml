@@ -1,95 +1,107 @@
+# HomeLab stack. Start / update one service: docker compose up -d <service>
+# Secrets come from .env (see .env.example); only the variables a service lists
+# under environment: reach that container.
+
+# ---- shared snippets (YAML anchors) -----------------------------------------
+x-tz: &tz
+  TZ: America/New_York
+
+# linuxserver.io images: run as fernando (1000) so files on /mnt are his.
+x-lsio-env: &lsio-env
+  PUID: "1000"
+  PGID: "1000"
+  TZ: America/New_York
+
+# Default shape of an app behind NPM: restart unless stopped, on proxy-net,
+# no host ports (NPM / other containers reach it by container name).
+x-app: &app
+  restart: unless-stopped
+  networks: [proxy-net]
+
 networks:
   proxy-net:
     driver: bridge
 
 services:
-  # --- Management and Core Networking ---
+  # --- Edge ---------------------------------------------------------------------
   reverse-proxy:
+    <<: *app
     image: 'jc21/nginx-proxy-manager:latest'
     container_name: nginx-proxy-manager
-    restart: unless-stopped
     ports:
       - '80:80'
       - '443:443'
-      - '81:81'
+      - '81:81'          # admin UI: LAN only (not port-forwarded); away: ssh -L 8181:localhost:81
     volumes:
       - ${DOCKERDIR}/nginx-proxy-manager/data:/data
       - ${DOCKERDIR}/nginx-proxy-manager/letsencrypt:/etc/letsencrypt
       - ./nginx-proxy-manager/snippets:/snippets:ro   # Authelia gate snippet (read-only, outside /data)
-    networks:
-      - proxy-net
 
-  # --- Auth ---
-  # SSO for the "Authelia" NPM access lists (see authelia/README.md).
-  # Served at https://auth.ftoralesacosta.me once the NPM host is added;
-  # until then testable at http://127.0.0.1:9091.
+  # One DDNS updater for every DNS-only record that must follow the home IP.
+  # Proxied subdomains don't need it (Cloudflare fronts them). mc. must stay
+  # DNS-only because Minecraft isn't HTTP. IPv6 off: inbound v6 is closed at
+  # the router, an AAAA record would break clients.
+  # Token: Cloudflare scoped API token with Zone:DNS:Edit on the zone.
+  cloudflare-ddns:
+    image: favonia/cloudflare-ddns:1
+    container_name: cloudflare-ddns
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      CLOUDFLARE_API_TOKEN: ${Cloudflare_API_KEY}
+      DOMAINS: ${DOMAIN_NAME},mc.${DOMAIN_NAME}
+      PROXIED: "false"
+      IP6_PROVIDER: none
+      <<: *tz
+
+  # --- Auth ---------------------------------------------------------------------
+  # Login portal + OIDC provider: https://auth.ftoralesacosta.me (see authelia/README.md).
+  # Runs as fernando so the helper scripts and signup edit users/auth_file.yml
+  # directly; file.watch: true in configuration.yml reloads it without a restart.
   authelia:
+    <<: *app
     image: ghcr.io/authelia/authelia:4.39  # pinned: :latest broke the config on 4.39 (2026-10-24)
     container_name: authelia
-    restart: unless-stopped
-    networks:
-      - proxy-net
+    user: "1000:1000"
     environment:
       # Gmail app password lives in .env (gitignored); Authelia picks it up
       # via its env-override convention (AUTHELIA_ + config key path).
       - AUTHELIA_NOTIFIER_SMTP_PASSWORD=${GMAIL_APP_PASSWORD}
-    # Loopback-only test port. NPM reaches authelia:9091 over proxy-net,
-    # safe to drop this mapping once the NPM host is up.
-    ports:
-      - "127.0.0.1:9091:9091"
     volumes:
       - ./authelia/configuration.yml:/config/configuration.yml:ro
-      # rw on purpose: Authelia rewrites this file when you change your
-      # password from the profile page (file identity provider).
-      - ./authelia/auth_file.yml:/config/auth_file.yml
+      # A directory, not a single file: Authelia's watcher needs the real
+      # directory to see changes; rw because Authelia rewrites the file on
+      # password changes and signup appends to it.
+      - ./authelia/users:/config/users
       - ${DOCKERDIR}/authelia/data:/config/data
 
   # Self-service signup form: the public front door (NOT behind the Authelia gate).
-  # Newcomer picks their own username/email/password -> account created with
-  # group [pending] (portal login only; default_policy: deny keeps them out of
-  # every app) -> approval email to Fernando. Writes auth_file.yml the same way
-  # authelia/add-user.sh does (root alpine one-shot over the docker socket).
+  # Newcomer picks username/email/password -> appended to users/auth_file.yml
+  # with group [pending] (portal only: default_policy deny + the OIDC "approved"
+  # policy keep them out of every app) -> approval email to Fernando.
   # Approve with: ~/HomeLab/authelia/approve-user.sh <user> [group]
+  # No Docker socket: its only write access is the users directory.
   signup:
+    <<: *app
     build: ./signup
     container_name: signup
-    restart: unless-stopped
-    group_add:
-      - "996"   # host docker group: the app drives one-shot alpine/authelia containers
-    networks:
-      - proxy-net
+    user: "1000:1000"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ./authelia/users:/data
       - ./signup/smtp.env:/etc/signup/smtp.env:ro
 
-  cloudflare-ddns:
-    image: oznu/cloudflare-ddns:latest
-    container_name: cloudflare-ddns
-    restart: always
-    environment:
-      - API_KEY=${Cloudflare_API_KEY}
-      - ZONE=${DOMAIN_NAME}
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-
-  cloudflare-ddns-for-minecraft:
-    image: oznu/cloudflare-ddns:latest
-    container_name: cloudflare-ddns-for-minecraft
-    restart: always
-    environment:
-      - API_KEY=${Cloudflare_API_KEY}
-      - ZONE=${DOMAIN_NAME}
-      - SUBDOMAIN=mc
-      - PROXIED=false
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-
-
-  # --- Home Automation and Media ---
+  # --- Home Automation ----------------------------------------------------------
   homebridge:
     image: homebridge/homebridge:latest
     container_name: homebridge
-    restart: always
+    restart: unless-stopped
     network_mode: host
     volumes:
       - ${DOCKERDIR}/homebridge:/homebridge
@@ -112,14 +124,13 @@ services:
       - /home/fernando/HomeLab/HomeAssistant:/home/fernando/HomeLab/HomeAssistant
       - /etc/localtime:/etc/localtime:ro
 
+  # --- Media: players / readers -------------------------------------------------
   jellyfin:
+    <<: *app
     image: jellyfin/jellyfin:latest
     container_name: jellyfin
-    restart: unless-stopped
-    networks:
-      - proxy-net
     group_add:
-      - "110"
+      - "110"   # render group (/dev/dri) for hardware transcoding
     devices:
       - /dev/dri/renderD128:/dev/dri/renderD128
     volumes:
@@ -128,55 +139,184 @@ services:
       - /mnt/media/:/media
 
   # Ebook/comic reader (web reader, OPDS, Kobo sync) for the library Bindery
-  # builds in /mnt/media/Books. Add a "Books" library pointing at /media/Books
-  # on first run. Kavita+ features are off without a license; not needed.
+  # builds in /mnt/media/Books. Kavita+ features are off without a license.
   kavita:
+    <<: *app
     image: lscr.io/linuxserver/kavita:latest
     container_name: kavita
-    restart: unless-stopped
-    networks:
-      - proxy-net
-    # No host ports: reached via NPM / other containers at kavita:5000.
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=America/New_York
+    environment: *lsio-env
     volumes:
       - ${DOCKERDIR}/kavita/config:/config
       - /mnt/media/:/media
 
-  mc:
-    image: itzg/minecraft-server:java25
-    container_name: minecraft-server
-    restart: always
-    networks:
-      - proxy-net
-    ports:
-      - "25565:25565"
-    tty: true
-    stdin_open: true
-    environment:
-      EULA: "TRUE"
-      MEMORY: "4G"
-      VERSION: "26.1"
-      LEVEL: "Fun4All"
-      SERVER_PORT: "25565"
+  # --- Media: *arr stack (gated by Authelia; apps run External auth) -------------
+  sonarr:
+    <<: *app
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    environment: *lsio-env
     volumes:
-      - ${DOCKERDIR}/minecraft-server_SNAPSHOT/data:/data
+      - ${DOCKERDIR}/sonarr/config:/config
+      - /mnt/media/:/media
+      - /mnt/data/Downloads/:/downloads
 
-  # --- Personal Finance ---
+  radarr:
+    <<: *app
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    environment:
+      <<: *lsio-env
+      UMASK_SET: "022"
+    volumes:
+      - ${DOCKERDIR}/radarr/config:/config
+      - /mnt/media/:/media
+      - /mnt/data/Downloads/:/downloads
+
+  lidarr:
+    <<: *app
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    environment: *lsio-env
+    volumes:
+      - ${DOCKERDIR}/lidarr/config:/config
+      - /mnt/media/:/media
+      - /mnt/data/Downloads/:/downloads
+
+  prowlarr:
+    <<: *app
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    environment: *lsio-env
+    volumes:
+      - ${DOCKERDIR}/prowlarr/config:/config
+
+  bazarr:
+    <<: *app
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    environment: *lsio-env
+    volumes:
+      - ${DOCKERDIR}/bazarr/config:/config
+      - /mnt/media/:/media
+      - /mnt/data/Downloads/:/downloads
+
+  # Request manager (Overseerr/Jellyseerr successor). Runs as the node user
+  # (UID 1000) and drops all caps, so the config dir must be 1000:1000.
+  seerr:
+    <<: *app
+    image: ghcr.io/seerr-team/seerr:latest
+    container_name: seerr
+    init: true
+    environment: *tz
+    volumes:
+      - ${DOCKERDIR}/seerr/config:/app/config
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:5055/api/v1/settings/public || exit 1
+      start_period: 20s
+      timeout: 3s
+      interval: 15s
+      retries: 3
+    security_opt:
+      - no-new-privileges
+    cap_drop:
+      - ALL
+
+  # Books (Readarr successor; Readarr was archived 2025-06 when its metadata
+  # API died). Distroless Go binary, so no PUID switching: run as 1000.
+  # ${DOCKERDIR}/bindery must exist and be owned by 1000 before start.
+  bindery:
+    <<: *app
+    image: ghcr.io/vavallee/bindery:latest
+    container_name: bindery
+    user: "1000:1000"
+    environment:
+      <<: *tz
+      BINDERY_LOG_LEVEL: info
+      # Bootstrap-only knobs (everything else is set in the web UI):
+      BINDERY_LIBRARY_DIR: /media/Books        # ebook root (Kavita serves this)
+      BINDERY_AUDIOBOOK_DIR: /media/Audiobooks
+      BINDERY_DOWNLOAD_DIR: /downloads
+      # Forward-auth SSO behind the Authelia gate: trust proxy-net (where NPM
+      # connects from) and read the Remote-User header the gate forwards.
+      # Auth mode itself is set via API: PUT /api/v1/auth/mode {"mode":"proxy"}.
+      # First-run admin username MUST equal the Authelia username.
+      BINDERY_TRUSTED_PROXY: 172.23.0.0/16
+      BINDERY_PROXY_AUTH_HEADER: Remote-User
+    volumes:
+      - ${DOCKERDIR}/bindery/config:/config
+      - /mnt/media/:/media
+      - /mnt/data/Downloads/:/downloads
+
+  flaresolverr:
+    <<: *app
+    image: 21hsmw/flaresolverr:nodriver
+    container_name: flaresolverr
+    environment:
+      <<: *tz
+      LOG_LEVEL: info
+
+  # --- Downloads ------------------------------------------------------------------
+  # Usenet: direct internet, no VPN.
+  sabnzbd:
+    <<: *app
+    image: lscr.io/linuxserver/sabnzbd:latest
+    container_name: sabnzbd
+    environment: *lsio-env
+    volumes:
+      - ${DOCKERDIR}/sabnzbd/config:/config
+      - /mnt/data/Downloads/:/downloads
+      - /mnt/media/:/media
+
+  # Torrents: qbittorrent shares the gluetun network namespace, so all its
+  # traffic goes through ProtonVPN. WebUI 8080 has no host port: NPM and the
+  # *arrs reach it at vpn-gateway:8080. SERVER_CITIES must be a P2P city.
+  vpn:
+    <<: *app
+    image: ghcr.io/qdm12/gluetun:latest
+    container_name: vpn-gateway
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - VPN_SERVICE_PROVIDER=protonvpn
+      - VPN_TYPE=wireguard
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
+      - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESS}
+      - FIREWALL_ALLOWED_PORTS=8080
+      - SERVER_CITIES=Amsterdam
+      # Proton NAT-PMP: forward one random port and tell qbittorrent to listen on it.
+      - VPN_PORT_FORWARDING=on
+      - VPN_PORT_FORWARDING_UP_COMMAND=/bin/sh -c 'for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do if wget -q -O /dev/null --post-data "json={\"listen_port\":{{PORTS}},\"random_port\":false,\"upnp\":false,\"current_network_interface\":\"\",\"current_interface_address\":\"\"}" http://127.0.0.1:8080/api/v2/app/setPreferences 2>/dev/null; then echo "qbittorrent moved to port {{PORTS}} and unbound from lo"; exit 0; fi; sleep 1; done; echo "up-command gave up after 30s"; exit 1'
+      - VPN_PORT_FORWARDING_DOWN_COMMAND=/bin/sh -c 'wget -O- -nv --retry-connrefused --post-data "json={\"listen_port\":0,\"current_network_interface\":\"lo\"}" http://127.0.0.1:8080/api/v2/app/setPreferences'
+      - TZ=America/New_York
+    volumes:
+      - ${DOCKERDIR}/gluetun:/gluetun
+
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    restart: unless-stopped
+    network_mode: "service:vpn"
+    environment:
+      <<: *lsio-env
+      WEBUI_PORT: "8080"
+    volumes:
+      - ${DOCKERDIR}/qbittorrent/config:/config
+      - /mnt/data/Downloads/:/downloads
+    depends_on:
+      vpn:
+        condition: service_healthy
+
+  # --- Personal Finance -------------------------------------------------------------
   actual:
+    <<: *app
     image: actualbudget/actual-server:latest
     container_name: actual-budget
-    restart: unless-stopped
-    networks:
-      - proxy-net
     ports:
       - "5006:5006"
     environment:
-      - TZ=America/New_York
+      <<: *tz
       # Default is 20MB, which a few years of budget history can outgrow.
-      - ACTUAL_UPLOAD_FILE_SYNC_SIZE_LIMIT_MB=100
+      ACTUAL_UPLOAD_FILE_SYNC_SIZE_LIMIT_MB: "100"
     volumes:
       # Holds server-files/ (accounts, SimpleFIN keys) and user-files/ (budgets).
       - ${DOCKERDIR}/actual-budget/data:/data
@@ -185,11 +325,9 @@ services:
   # still-uncategorized transactions. Marks them "#actual-ai" in Notes for review.
   # It does NOT create rules (Actual only learns rules from categories you set yourself).
   actual-ai:
+    <<: *app
     image: docker.io/sakowicz/actual-ai:3.0.4
     container_name: actual-ai
-    restart: unless-stopped
-    networks:
-      - proxy-net
     depends_on:
       - actual
     environment:
@@ -213,249 +351,48 @@ services:
       - ./actual-ai/scripts:/scripts:ro
       - ./actual-ai/logs:/logs                       # daily-fixups.jsonl (gitignored: financial data)
 
-  # --- VPN and Torrent Services ---
-  vpn:
-    image: ghcr.io/qdm12/gluetun:latest
-
-    container_name: vpn-gateway
-    restart: always
-    cap_add:
-      - NET_ADMIN
-    networks: # <-- ADD THIS SECTION
-      - proxy-net
-    # qBittorrent webUI (8080) has no host port: NPM reaches it at
-    # vpn-gateway:8080 over proxy-net.
-    # No host port for torrents: Proton forwards a random NAT-PMP port, and
-    # qbittorrent listens on it directly via the UP hook below.
+  # --- Games ------------------------------------------------------------------------
+  mc:
+    <<: *app
+    image: itzg/minecraft-server:java25
+    container_name: minecraft-server
+    ports:
+      - "25565:25565"
+    tty: true
+    stdin_open: true
     environment:
-      - VPN_SERVICE_PROVIDER=protonvpn
-      - VPN_TYPE=wireguard
-      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
-      - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESS}
-      - FIREWALL_ALLOWED_PORTS=8080
-      - SERVER_CITIES=Amsterdam
-      # Proton NAT-PMP: forward one random port and tell qbittorrent to listen on it.
-      - VPN_PORT_FORWARDING=on
-      - VPN_PORT_FORWARDING_UP_COMMAND=/bin/sh -c 'for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do if wget -q -O /dev/null --post-data "json={\"listen_port\":{{PORTS}},\"random_port\":false,\"upnp\":false,\"current_network_interface\":\"\",\"current_interface_address\":\"\"}" http://127.0.0.1:8080/api/v2/app/setPreferences 2>/dev/null; then echo "qbittorrent moved to port {{PORTS}} and unbound from lo"; exit 0; fi; sleep 1; done; echo "up-command gave up after 30s"; exit 1'
-      - VPN_PORT_FORWARDING_DOWN_COMMAND=/bin/sh -c 'wget -O- -nv --retry-connrefused --post-data "json={\"listen_port\":0,\"current_network_interface\":\"lo\"}" http://127.0.0.1:8080/api/v2/app/setPreferences'
-      - TZ=America/New_York
-        #- DOT_SERVERS=10.64.0.1,10.88.0.1
+      EULA: "TRUE"
+      MEMORY: "4G"
+      VERSION: "26.1"
+      LEVEL: "Fun4All"
+      SERVER_PORT: "25565"
     volumes:
-      - ${DOCKERDIR}/gluetun:/gluetun
+      - ${DOCKERDIR}/minecraft-server_SNAPSHOT/data:/data
 
-  qbittorrent:
-    image: lscr.io/linuxserver/qbittorrent:latest
-    container_name: qbittorrent
-    restart: always
-    network_mode: "service:vpn"
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=America/New_York
-      - WEBUI_PORT=8080
+  # --- Web ----------------------------------------------------------------------------
+  website:
+    <<: *app
+    image: nginx:alpine
+    container_name: personal-website
     volumes:
-      - ${DOCKERDIR}/qbittorrent/config:/config
-      - /mnt/data/Downloads/:/downloads
-    depends_on:
-      vpn:
-        condition: service_healthy
+      - ../ftoralesacosta.github.io:/usr/share/nginx/html:ro
 
-  sabnzbd:
-      image: lscr.io/linuxserver/sabnzbd:latest 
-      container_name: sabnzbd
-      restart: always
-      networks: 
-        - proxy-net 
-      # No host ports: reached via NPM / other containers at sabnzbd:8080.
-      environment:
-        - PUID=1000 
-        - PGID=1000 
-        - TZ=America/New_York
-      volumes:
-        - ${DOCKERDIR}/sabnzbd/config:/config
-        - /mnt/data/Downloads/:/downloads
-        - /mnt/media/:/media
-
-  radarr:
-    image: lscr.io/linuxserver/radarr:latest
-    container_name: radarr
-    restart: always
-    networks:
-      - proxy-net
-    # No host ports: reached via NPM / other containers at radarr:7878.
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=America/New_York
-      - UMASK_SET=022
-    volumes:
-      - ${DOCKERDIR}/radarr/config:/config
-      - /mnt/media/:/media
-      - /mnt/data/Downloads/:/downloads
-
-  sonarr:
-    image: lscr.io/linuxserver/sonarr:latest
-    container_name: sonarr
-    restart: always
-    networks:
-      - proxy-net
-    # No host ports: reached via NPM / other containers at sonarr:8989.
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=America/New_York
-    volumes:
-      - ${DOCKERDIR}/sonarr/config:/config
-      - /mnt/media/:/media
-      - /mnt/data/Downloads/:/downloads
-
-  prowlarr:
-    image: lscr.io/linuxserver/prowlarr:latest
-    container_name: prowlarr
-    restart: always
-    networks:
-      - proxy-net
-    # No host ports: reached via NPM / other containers at prowlarr:9696.
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=America/New_York
-    volumes:
-      - ${DOCKERDIR}/prowlarr/config:/config
-
-  bazarr:
-    image: lscr.io/linuxserver/bazarr:latest
-    container_name: bazarr
-    restart: unless-stopped
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=America/New_York
-    networks:
-      - proxy-net
-    volumes:
-      - ${DOCKERDIR}/bazarr/config:/config
-      - /mnt/media/:/media
-      - /mnt/data/Downloads/:/downloads
-    # No host ports: reached via NPM at bazarr:6767.
-
-  lidarr:
-    image: lscr.io/linuxserver/lidarr:latest
-    container_name: lidarr
-    restart: always
-    networks:
-      - proxy-net
-    # No host ports: reached via NPM / other containers at lidarr:8686.
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=America/New_York
-    volumes:
-      - ${DOCKERDIR}/lidarr/config:/config
-      - /mnt/media/:/media
-      - /mnt/data/Downloads/:/downloads
-
-  # Request manager (successor to Overseerr/Jellyseerr, now "Seerr"): the family
-  # requests movies/TV, sonarr/radarr fulfill them. The image runs as the node
-  # user (UID 1000) and drops all caps, so the config dir must be 1000:1000.
-  seerr:
-    image: ghcr.io/seerr-team/seerr:latest
-    container_name: seerr
-    init: true
-    restart: unless-stopped
-    networks:
-      - proxy-net
-    # No host ports: reached via NPM / other containers at seerr:5055.
-    environment:
-      - TZ=America/New_York
-    volumes:
-      - ${DOCKERDIR}/seerr/config:/app/config
-    healthcheck:
-      test: wget --no-verbose --tries=1 --spider http://localhost:5055/api/v1/settings/public || exit 1
-      start_period: 20s
-      timeout: 3s
-      interval: 15s
-      retries: 3
-    security_opt:
-      - no-new-privileges
-    cap_drop:
-      - ALL
-
-  # --- Books (Readarr successor; Readarr was archived 2025-06 when its
-  # metadata API died). Single Go binary, metadata from OpenLibrary /
-  # Google Books / Hardcover (documented APIs, no scraping). Indexers and
-  # download clients (sabnzbd:8080, vpn-gateway:8080) are configured in the
-  # web UI; Prowlarr syncs as generic Newznab/Torznab per indexer.
-  bindery:
-    image: ghcr.io/vavallee/bindery:latest
-    container_name: bindery
-    restart: always
-    networks:
-      - proxy-net
-    # No host ports: reached via NPM / other containers at bindery:8787.
-    # Distroless image, no runtime user switching: run as the uid:gid that
-    # owns the library and downloads (1000, same as PUID elsewhere here).
-    # ~/.volumes/bindery must exist and be owned by 1000 before start.
-    user: "1000:1000"
-    environment:
-      - TZ=America/New_York
-      - BINDERY_LOG_LEVEL=info
-      # Bootstrap-only knobs (everything else is set in the web UI):
-      - BINDERY_LIBRARY_DIR=/media/Books        # ebook root (Kavita serves this)
-      - BINDERY_AUDIOBOOK_DIR=/media/Audiobooks
-      - BINDERY_DOWNLOAD_DIR=/downloads
-      # Forward-auth SSO behind the Authelia gate: trust only proxy-net (where
-      # NPM connects from) and read the Remote-User header gated hosts forward.
-      # The auth mode itself is NOT an env knob: flip via API after first-run
-      # (PUT /api/v1/auth/mode {"mode":"proxy"} - not offered in Settings UI).
-      # First-run admin username MUST equal the Authelia username; other
-      # Authelia users are auto-provisioned as role "user" on first pass.
-      - BINDERY_TRUSTED_PROXY=172.23.0.0/16
-      - BINDERY_PROXY_AUTH_HEADER=Remote-User
-    volumes:
-      - ${DOCKERDIR}/bindery/config:/config
-      - /mnt/media/:/media
-      - /mnt/data/Downloads/:/downloads
-
-  flaresolverr:
-    image: 21hsmw/flaresolverr:nodriver
-    container_name: flaresolverr
-    restart: unless-stopped
-    environment:
-      - LOG_LEVEL=info
-      - TZ=America/New_York
-    networks:
-      - proxy-net
-    # No host ports: Prowlarr reaches it at flaresolverr:8191.
-
-  # --- Web Search (meta-search backend for the Hermes agent) ---
+  # Meta-search backend for Open WebUI and the Hermes agent.
   searxng:
+    <<: *app
     image: searxng/searxng:latest
     container_name: searxng
-    restart: unless-stopped
     environment:
-      - SEARXNG_SECRET=${SEARXNG_SECRET}
-      - TZ=America/New_York
-    networks:
-      - proxy-net
+      <<: *tz
+      SEARXNG_SECRET: ${SEARXNG_SECRET}
     ports:
-      - "127.0.0.1:8888:8080"      # host agent (Hermes); unchanged
-      - "192.168.4.51:8888:8080"   # LAN browser access (wlp130s0); drop once the NPM host + Authelia are in front
+      - "127.0.0.1:8888:8080"      # Open WebUI + Hermes (host network / host process)
+      - "192.168.4.51:8888:8080"   # LAN browser access (wlp130s0)
     volumes:
       - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
 
-  website:                                
-    image: nginx:alpine                              
-    container_name: personal-website    
-    restart: unless-stopped    
-    volumes:                             
-      - ../ftoralesacosta.github.io:/usr/share/nginx/html:ro    
-    networks:           
-      - proxy-net  
-
-  # --- AI ---
-  # Open WebUI (moved here from /opt/open-webui on 2026-10-25). Data volume is the
-  # existing "open-webui_open-webui". Secrets come from .env.
+  # --- AI -------------------------------------------------------------------------------
+  # Open WebUI. Data volume is the pre-existing "open-webui_open-webui".
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
     container_name: open-webui
@@ -477,7 +414,8 @@ services:
       - WEB_SEARCH_ENGINE=searxng
       - SEARXNG_QUERY_URL=http://127.0.0.1:8888/search?q=<query>
       - WEB_SEARCH_RESULT_COUNT=5
-      # SSO via Authelia (OIDC)
+      # SSO via Authelia (OIDC). Authelia only lets groups admin/family/friends
+      # through (authorization_policy "approved"); pending signups are refused.
       - WEBUI_URL=https://webui.ftoralesacosta.me
       - OAUTH_PROVIDER_NAME=Authelia
       - OPENID_PROVIDER_URL=https://auth.ftoralesacosta.me/.well-known/openid-configuration

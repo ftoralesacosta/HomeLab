@@ -2,6 +2,7 @@
 *.bak-*
 authelia/configuration.yml
 authelia/auth_file.yml
+authelia/users/
 OpenWRT-BPI_R4/local/
 actual-ai/logs/
 backup/logs/

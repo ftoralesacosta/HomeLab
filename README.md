@@ -12,8 +12,8 @@ Verizon fiber ─► BPI-R4 router (OpenWrt) ─► LAN 192.168.4.0/22 ─► de
 
 | Area | Services |
 |---|---|
-| Edge | `reverse-proxy` (Nginx Proxy Manager: 80/443; admin UI **not public**: http://192.168.4.51:81 at home, away `ssh -L 8181:localhost:81 fernando@ftoralesacosta.me` → http://localhost:8181), `cloudflare-ddns`, `cloudflare-ddns-for-minecraft` |
-| Auth | `authelia` (https://auth.ftoralesacosta.me, image pinned to 4.39) |
+| Edge | `reverse-proxy` (Nginx Proxy Manager: 80/443; admin UI **not public**: http://192.168.4.51:81 at home, away `ssh -L 8181:localhost:81 fernando@ftoralesacosta.me` → http://localhost:8181), `cloudflare-ddns` (favonia; one container updates the DNS-only `ftoralesacosta.me` + `mc.` records) |
+| Auth | `authelia` (https://auth.ftoralesacosta.me, image pinned to 4.39), `signup` (https://signup.ftoralesacosta.me, self-service → `pending`) |
 | AI | `open-webui` (https://webui.ftoralesacosta.me, host network, port 3000; web search via SearXNG), `searxng` (LAN only) |
 | Media | `jellyfin`, `sonarr`, `radarr`, `lidarr` (music), `bazarr`, `prowlarr`, `sabnzbd`, `qbittorrent` (via `vpn` = gluetun), `flaresolverr`, `bindery` (books, Readarr successor), `kavita` (ebook/comic reader), `seerr` (request manager, Overseerr successor) |
 | Home | `homeassistant`, `homebridge` |
@@ -59,7 +59,8 @@ How each consumer gets its values:
   or the `fernando` group.
 
 Other secret files (gitignored, real values only on the server):
-`authelia/configuration.yml` (JWT/storage/OIDC secrets), `authelia/auth_file.yml` (users).
+`authelia/configuration.yml` (JWT/storage/OIDC secrets), `authelia/users/auth_file.yml` (users),
+`signup/smtp.env`.
 
 ### Change the CoreWeave API key
 
@@ -75,11 +76,12 @@ The same pattern applies to any other variable: edit `.env`, then `docker compos
 
 ## Single sign-on (Authelia)
 
-- Login page: https://auth.ftoralesacosta.me (users in `authelia/auth_file.yml`, see
+- Login page: https://auth.ftoralesacosta.me (users in `authelia/users/auth_file.yml`, see
   [authelia/README.md](authelia/README.md)). Session cookie covers all `*.ftoralesacosta.me`.
 - **Open WebUI** uses Authelia as its OIDC provider and redirects straight to the Authelia login
-  (`OAUTH_AUTO_REDIRECT=true`, `ENABLE_LOGIN_FORM=false`). Accounts are linked by email; new Authelia users
-  get a *pending* account that an admin approves. **If Authelia is down**: password login still works at
+  (`OAUTH_AUTO_REDIRECT=true`, `ENABLE_LOGIN_FORM=false`). Only groups admin/family/friends may
+  complete the OIDC login (Authelia policy `approved`); new users get a *pending* Open WebUI account
+  that an admin approves. Accounts are **not** merged by email (signup emails are unverified). **If Authelia is down**: password login still works at
   https://webui.ftoralesacosta.me/auth?form=1 (Open WebUI email + password).
 - Adding an OIDC app: add a client under `identity_providers.oidc.clients` in
   `authelia/configuration.yml` (template in `configuration.example.yml`), restart `authelia`.
@@ -90,7 +92,9 @@ The same pattern applies to any other variable: edit `.env`, then `docker compos
   `bindery.` (groups `admin` + `family`; Bindery runs auth mode "proxy" and consumes
 `Remote-User`, so a passing Authelia session logs straight in — no second login; other
    Authelia users auto-provision as role `user`), the *arr stack (groups `admin` + `family`,
-   `/api` bypassed for API-key clients), and `seerr.` (same shape as the *arr rule). Never
+   `/api` bypassed for API-key clients), `seerr.` (same shape as the *arr rule), `bazarr.`
+   (admin + family), and the download clients `sabnzbd.` + `qbittorrent.` (admin only, no
+   bypass — internal clients use the container names). Never
    route to Bindery from an NPM
   host/location without the snippet — a client could forge the identity header. Who may
   pass is set by `access_control` in `authelia/configuration.yml`.
@@ -99,10 +103,8 @@ The same pattern applies to any other variable: edit `.env`, then `docker compos
   against Authelia 1FA and auto-creates users (admin from the `admin` group; grant
   libraries once per new user). An OIDC "Sign in with SSO" door (SSO-Auth plugin +
   its Authelia client) was tried and removed the same day — the form is the login, 1FA.
-  TV/phone: use `https://jellyfin.ftoralesacosta.me` — the router's dnsmasq
-  split-DNS (`address=` records in /etc/config/dhcp) resolves it to
-  192.168.4.51 for LAN clients, so media stays on the LAN; remote clients
-  go via Cloudflare. Same Authelia username+password.
+  TV/phone: use the public `https://jellyfin.ftoralesacosta.me` (NAT hairpin verified
+  from the LAN) with the same Authelia username+password.
   Break-glass if Authelia is down: `authelia/jellyfin-breakglass.sh`.
 - Plan and status of the wider rollout: [homelab-sso-rollout.md](homelab-sso-rollout.md).
 

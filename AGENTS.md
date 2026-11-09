@@ -2,7 +2,7 @@
 
 - **Overview**: Read `README.md` and `docker-compose.yml` for the full service map.
 - **Secrets (STRICT)**:
-  - `~/HomeLab/.env`, `authelia/configuration.yml`, `authelia/auth_file.yml`, and `/run/hermes-gateway.env` contain live production secrets.
+  - `~/HomeLab/.env`, `authelia/configuration.yml`, `authelia/users/auth_file.yml`, `signup/smtp.env`, and `/run/hermes-gateway.env` contain live production secrets.
   - **NEVER** read, print, or output their contents. Always inspect `.env.example` or `authelia/configuration.example.yml` instead.
 - **Key Architecture**:
   - **Edge & Auth**: `reverse-proxy` (Nginx Proxy Manager on 80/443, admin UI on LAN `192.168.4.51:81`) + `authelia` (`4.39` pinned, SSO/OIDC).

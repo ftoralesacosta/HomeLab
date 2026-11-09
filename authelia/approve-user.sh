@@ -1,43 +1,46 @@
 #!/usr/bin/env bash
-# Approve a pending signup: flip the Authelia group and restart.
+# Approve a pending signup: move the user from [pending] to a real group.
 #
 #   ~/HomeLab/authelia/approve-user.sh <username> [group]
 #   approve-user.sh bonnie             # group: family
-#   approve-user.sh bonnie friends     # any other group
-#   approve-user.sh bonnie ""          # no group (portal only, per access_control)
+#   approve-user.sh bonnie friends     # Open WebUI only (no media apps)
 #
+# No restart needed: Authelia watches users/auth_file.yml and reloads it.
 # Remember the WebUI half: WebUI -> Admin Panel -> Users -> role "pending" -> "user".
 set -euo pipefail
 [ $# -ge 1 ] || { sed -n '3,9p' "$0"; exit 1; }
 U=$1; G=${2:-family}
 [[ $U =~ ^[a-z0-9._-]+$ ]] || { echo "invalid username"; exit 1; }
-if [ -n "$G" ] && ! [[ $G =~ ^[a-z0-9._-]+$ ]]; then echo "invalid group"; exit 1; fi
+[[ $G =~ ^[a-z0-9._-]+$ ]] || { echo "invalid group"; exit 1; }
+[ "$G" = admin ] && { read -r -p "Really give '$U' the admin group? [y/N] " a; [ "$a" = y ] || exit 1; }
 
-D=$(cd "$(dirname "$0")" && pwd)
-RUNF() { docker run --rm -i -v "$D:/a" alpine:3 sh -c "$1"; }
-
-# user must exist and still be pending
-RUNF "awk -v u='    $U:' '\$0==u{f=1} f&&/groups: \[pending\]/{p=1} END{exit p?0:1}' /a/auth_file.yml" \
-  || { echo "'$U' not found or not pending"; exit 1; }
-
-GSPEC=$([ -n "$G" ] && printf '[%s]' "$G" || printf '[]')
-RUNF "awk -v u='    $U:' -v g='groups: $GSPEC' '
-  \$0==u {f=1}
-  f && /^    [a-z0-9._-]+:/ && \$0 != u {f=0}
-  f && /groups: \[pending\]/ {sub(/groups: \[pending\]/, g)}
-  {print}' /a/auth_file.yml > /tmp/n && cat /tmp/n > /a/auth_file.yml && rm /tmp/n"
-
-# validate; on failure, show the error (the file is left as-is so you can inspect it)
-if ! docker run --rm -e AUTHELIA_NOTIFIER_SMTP_PASSWORD=x -v "$D/configuration.yml:/config/configuration.yml:ro" \
-     -v "$D/auth_file.yml:/config/auth_file.yml:ro" ghcr.io/authelia/authelia:4.39 \
-     authelia validate-config --config /config/configuration.yml >/dev/null; then
-  echo "Authelia config check FAILED - not restarting. Check the end of $D/auth_file.yml"; exit 1
+F="$(cd "$(dirname "$0")" && pwd)/users/auth_file.yml"
+U="$U" G="$G" F="$F" python3 - <<'EOF'
+import os, re, sys, tempfile, yaml
+u, g, f = os.environ["U"], os.environ["G"], os.environ["F"]
+text = open(f).read()
+users = yaml.safe_load(text)["users"]
+if u not in users or "pending" not in (users[u].get("groups") or []):
+    sys.exit(f"'{u}' not found or not pending")
+# Edit only that user's flow-style "groups: [pending]" line (signup writes it that way).
+lines, out, inside = text.splitlines(keepends=True), [], False
+for line in lines:
+    if re.match(r"^    \S.*:\s*$", line):
+        inside = line.strip() == f"{u}:"
+    if inside and re.match(r"^\s+groups: \[pending\]\s*$", line):
+        line = re.sub(r"\[pending\]", f"[{g}]", line)
+    out.append(line)
+new = "".join(out)
+assert yaml.safe_load(new)["users"][u]["groups"] == [g], "edit failed"
+fd, tmp = tempfile.mkstemp(dir=os.path.dirname(f), prefix=".auth_file.")
+with os.fdopen(fd, "w") as h:
+    h.write(new)
+os.chmod(tmp, 0o600)
+os.replace(tmp, f)
+EOF
+sleep 3
+if docker logs --since 10s authelia 2>&1 | grep -qiE 'level=(error|fatal)'; then
+  echo "WARNING: Authelia logged an error after the reload:"; docker logs --since 10s authelia 2>&1 | tail -5
 fi
-docker restart authelia >/dev/null && sleep 5
-docker inspect -f '{{.State.Status}}' authelia | grep -q running || { echo "Authelia did not come back up!"; exit 1; }
-
-echo "Approved '$U' (groups: $GSPEC). Authelia restarted."
-echo "They can now log in at https://auth.ftoralesacosta.me and use the apps their group is allowed."
-if [ "$G" = family ]; then
-  echo "WebUI half: Open WebUI -> Admin Panel -> Users -> role 'pending' -> 'user'."
-fi
+echo "Approved '$U' (groups: [$G]). Authelia reloads the users file by itself."
+echo "WebUI half (if they use it): Open WebUI -> Admin Panel -> Users -> role 'pending' -> 'user'."

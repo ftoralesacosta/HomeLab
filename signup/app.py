@@ -1,36 +1,82 @@
+"""Self-service signup for Authelia (file backend).
+
+The public front door (NOT behind the Authelia gate). A newcomer picks their
+own username/email/password -> appended to the Authelia users file with group
+[pending] -> Authelia picks it up by itself (authentication_backend.file.watch)
+-> approval email to the admin. Pending users can only log in to the portal;
+access_control (default deny) and the OIDC "approved" policy keep them out of
+every app until ~/HomeLab/authelia/approve-user.sh moves them to a real group.
+
+Deliberately small attack surface: no Docker socket, runs as uid 1000 with a
+read-only root fs; the only writable thing is the users directory
+(./authelia/users mounted at /data).
+"""
+import fcntl
+import ipaddress
 import os
 import re
 import smtplib
+import tempfile
 import time
 from email.message import EmailMessage
+from html import escape
 
 import argon2
-import docker
+import yaml
 from flask import Flask, request
 
-AUTHDIR = "/home/fernando/HomeLab/authelia"
-IMG = "ghcr.io/authelia/authelia:4.39"
-ALPINE = "alpine:3"
+USERS_FILE = "/data/auth_file.yml"
+LOCK_FILE = "/data/.signup.lock"
 SMTP_ENV = "/etc/signup/smtp.env"
 DOMAIN = "ftoralesacosta.me"
 
 USERNAME_RE = re.compile(r"^[a-z0-9._-]{3,32}$")
 EMAIL_RE = re.compile(r"^[A-Za-z0-9._+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 
-PH = argon2.PasswordHasher()
-DK = docker.from_env()
+PER_IP_PER_HOUR = 3        # per real client IP
+GLOBAL_PER_HOUR = 10       # all clients together (rotating-IP spam cap)
+MAX_PENDING = 15           # stop accepting while this many await approval
+
+# Cloudflare edge ranges (https://www.cloudflare.com/ips/). Only when the TCP
+# peer that NPM saw (X-Real-IP) is one of these do we trust CF-Connecting-IP;
+# a direct-to-origin request could otherwise forge it.
+CF_NETS = [ipaddress.ip_network(n) for n in (
+    "173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22", "103.31.4.0/22",
+    "141.101.64.0/18", "108.162.192.0/18", "190.93.240.0/20", "188.114.96.0/20",
+    "197.234.240.0/22", "198.41.128.0/17", "162.158.0.0/15", "104.16.0.0/13",
+    "104.24.0.0/14", "172.64.0.0/13", "131.0.72.0/22",
+    "2400:cb00::/32", "2606:4700::/32", "2803:f800::/32", "2405:b500::/32",
+    "2405:8100::/32", "2a06:98c0::/29", "2c0f:f248::/32",
+)]
+
+# Same parameters Authelia 4.39 uses by default for argon2id.
+PH = argon2.PasswordHasher(time_cost=3, memory_cost=65536, parallelism=4,
+                           hash_len=32, salt_len=16)
 app = Flask(__name__)
 
-_rl = {}
+_hits = {}      # ip -> [timestamps]
+_global = []    # timestamps
+
+
+def client_ip():
+    peer = request.headers.get("X-Real-IP") or request.remote_addr or "?"
+    try:
+        if any(ipaddress.ip_address(peer) in n for n in CF_NETS):
+            return request.headers.get("CF-Connecting-IP") or peer
+    except ValueError:
+        pass
+    return peer
 
 
 def rate_limited(ip):
     now = time.time()
-    w = [t for t in _rl.get(ip, []) if now - t < 3600]
-    if len(w) >= 3:
+    _global[:] = [t for t in _global if now - t < 3600]
+    w = [t for t in _hits.get(ip, []) if now - t < 3600]
+    if len(w) >= PER_IP_PER_HOUR or len(_global) >= GLOBAL_PER_HOUR:
         return True
     w.append(now)
-    _rl[ip] = w
+    _hits[ip] = w
+    _global.append(now)
     return False
 
 
@@ -45,49 +91,52 @@ def load_smtp():
     return env
 
 
-def root_check(pattern):
-    try:
-        DK.containers.run(
-            ALPINE, ["sh", "-c", f"grep -qE -- '{pattern}' /a/auth_file.yml"],
-            remove=True, volumes={AUTHDIR: {"bind": "/a", "mode": "ro"}},
+class SignupError(Exception):
+    """Message is safe to show to the user."""
+
+
+def add_user(username, email, password_hash):
+    """Append a [pending] user under an exclusive lock, atomically."""
+    with open(LOCK_FILE, "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        with open(USERS_FILE) as f:
+            text = f.read()
+        users = (yaml.safe_load(text) or {}).get("users") or {}
+        if username in {k.lower() for k in users}:
+            raise SignupError("That username is already taken.")
+        if email in {str(v.get("email", "")).lower() for v in users.values()}:
+            raise SignupError("That email is already in use.")
+        pending = sum(1 for v in users.values() if "pending" in (v.get("groups") or []))
+        if pending >= MAX_PENDING:
+            raise SignupError("Signups are paused right now. Try again later.")
+
+        entry = (
+            f"    {username}:\n"
+            f"        password: \"{password_hash}\"\n"
+            f"        displayname: \"{username}\"\n"   # required by Authelia's schema
+            f"        email: {email}\n"
+            f"        groups: [pending]\n"
+            f"        disabled: false\n"
         )
-        return True
-    except docker.errors.ContainerError:
-        return False
+        new = text if text.endswith("\n") else text + "\n"
+        new += entry
+        check = yaml.safe_load(new)["users"][username]
+        if check.get("groups") != ["pending"] or check.get("email") != email:
+            raise RuntimeError("generated entry did not round-trip")
 
-
-def root_append(text):
-    import base64
-    b64 = base64.b64encode(text.encode()).decode()
-    DK.containers.run(
-        ALPINE, ["sh", "-c", "printf '%s' \"$B64\" | base64 -d >> /a/auth_file.yml"],
-        environment={"B64": b64}, remove=True,
-        volumes={AUTHDIR: {"bind": "/a", "mode": "rw"}},
-    )
-
-
-def validate_config():
-    try:
-        DK.containers.run(
-            IMG,
-            ["authelia", "validate-config", "--config", "/config/configuration.yml"],
-            environment={"AUTHELIA_NOTIFIER_SMTP_PASSWORD": "x"},
-            remove=True, volumes={AUTHDIR: {"bind": "/config", "mode": "ro"}},
-        )
-        return None
-    except docker.errors.ContainerError as ex:
-        return (getattr(ex, "stderr", None) or getattr(ex, "stdout", None) or b"validation failed").decode(errors="replace")
-
-
-def restart_authelia():
-    cont = DK.containers.get("authelia")
-    cont.restart()
-    for _ in range(30):
-        cont.reload()
-        if cont.status == "running":
-            return True
-        time.sleep(1)
-    return False
+        st = os.stat(USERS_FILE)
+        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(USERS_FILE), prefix=".auth_file.")
+        try:
+            with os.fdopen(fd, "w") as f:
+                f.write(new)
+                f.flush()
+                os.fsync(f.fileno())
+            os.chmod(tmp, st.st_mode & 0o777)
+            os.replace(tmp, USERS_FILE)   # Authelia's file watcher reloads it
+        except BaseException:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+            raise
 
 
 def notify_admin(username, email):
@@ -99,14 +148,14 @@ def notify_admin(username, email):
     msg.set_content(
         "New signup request (awaiting approval):\n\n"
         f"  Username: {username}\n"
-        f"  Email:    {email}\n"
-        f"  Time (UTC):   {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        f"  Email:    {email} (NOT verified - anyone can type any address)\n"
+        f"  Time (UTC):   {time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime())}\n\n"
         "The account exists with their chosen password and group [pending]:\n"
         f"  - they can already log in to https://auth.{DOMAIN} (portal only: set 2FA/passkey)\n"
-        "  - they are denied everywhere else until you approve them\n\n"
+        "  - they are denied everywhere else (apps and OIDC) until you approve them\n\n"
         "Approve:\n"
-        f"  ~/HomeLab/authelia/approve-user.sh {username}           # group: family\n"
-        f"  ~/HomeLab/authelia/approve-user.sh {username} <group>   # other group, or '' for none\n\n"
+        f"  ~/HomeLab/authelia/approve-user.sh {username}            # group: family\n"
+        f"  ~/HomeLab/authelia/approve-user.sh {username} friends    # Open WebUI only\n\n"
         "If they need Open WebUI: WebUI -> Admin Panel -> Users -> role 'pending' -> 'user'."
     )
     tls = e.get("SMTP_TLS", "starttls")
@@ -133,7 +182,7 @@ PAGE_TMPL = """<!doctype html>
  .card{max-width:26rem;margin:0 auto;background:#fff;border:1px solid #e2e4e9;border-radius:10px;padding:1.8rem;box-shadow:0 1px 3px rgba(0,0,0,.06)}
  h1{font-size:1.25rem;margin:0 0 .3rem} p.sub{color:#5a6270;font-size:.9rem;margin:0 0 1.2rem}
  label{display:block;font-size:.85rem;font-weight:600;margin:.8rem 0 .2rem}
- input{width:100%;box-sizing:border-box;padding:.55rem .6rem;border:1px solid #c9ced6;border-radius:6px;font-size:1rem}
+ input{width:100%;box-sizing:border-box;padding:.55rem .65rem;border:1px solid #cdd1d6;border-radius:6px;font-size:1rem}
  button{width:100%;margin-top:1.2rem;padding:.65rem;background:#2f6fed;color:#fff;border:0;border-radius:6px;font-size:1rem;font-weight:600;cursor:pointer}
  button:hover{background:#255cd0}
  .err{background:#fdecec;color:#a1252b;border:1px solid #f3c1c3;border-radius:6px;padding:.6rem .8rem;font-size:.9rem;margin-bottom:.4rem}
@@ -148,10 +197,10 @@ PAGE_TMPL = """<!doctype html>
   <input name="username" required pattern="[a-z0-9._-]{3,32}" value="__USERNAME__">
   <label>Email</label>
   <input name="email" type="email" required value="__EMAIL__">
-  <label>Password (at least 8 characters)</label>
-  <input name="password" type="password" required minlength="8">
+  <label>Password (at least 10 characters)</label>
+  <input name="password" type="password" required minlength="10">
   <label>Repeat password</label>
-  <input name="password2" type="password" required minlength="8">
+  <input name="password2" type="password" required minlength="10">
   <button type="submit">Request access</button>
  </form>
  <p class="note">You will be able to log in at <b>auth.__DOMAIN__</b> right away (profile and
@@ -179,22 +228,29 @@ SUCCESS_TMPL = """<!doctype html>
 
 
 def render_page(error=None, old=None):
-    from html import escape
     o = old or {}
     h = PAGE_TMPL.replace("__DOMAIN__", DOMAIN)
-    h = h.replace(
-        "__ERROR__",
-        f'<div class="err">{escape(error)}</div>' if error else "",
-    )
+    h = h.replace("__ERROR__", f'<div class="err">{escape(error)}</div>' if error else "")
     h = h.replace("__USERNAME__", escape(o.get("username", "")))
     h = h.replace("__EMAIL__", escape(o.get("email", "")))
     return h
 
 
 def render_success(username):
-    from html import escape
-    return SUCCESS_TMPL.replace("__DOMAIN__", DOMAIN).replace(
-        "__USERNAME__", escape(username))
+    return SUCCESS_TMPL.replace("__DOMAIN__", DOMAIN).replace("__USERNAME__", escape(username))
+
+
+@app.after_request
+def headers(resp):
+    resp.headers["X-Frame-Options"] = "DENY"
+    resp.headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    return resp
+
+
+@app.get("/healthz")
+def healthz():
+    return "ok"
 
 
 @app.get("/")
@@ -204,11 +260,8 @@ def index():
 
 @app.post("/")
 def submit():
-    ip = request.headers.get("X-Real-IP") or request.remote_addr or "?"
-    if rate_limited(ip):
-        return render_page(error="Too many requests. Try again later."), 429
     f = request.form
-    u = (f.get("username") or "").strip()
+    u = (f.get("username") or "").strip().lower()
     e = (f.get("email") or "").strip().lower()
     p1, p2 = f.get("password") or "", f.get("password2") or ""
     old = {"username": u, "email": e}
@@ -218,41 +271,30 @@ def submit():
         err = "Username: 3-32 characters, lowercase letters, digits, dot, underscore, dash."
     elif not EMAIL_RE.match(e):
         err = "Enter a valid email address."
-    elif len(p1) < 8:
-        err = "Password: at least 8 characters."
+    elif len(p1) < 10:
+        err = "Password: at least 10 characters."
+    elif len(p1) > 256:
+        err = "Password: at most 256 characters."
     elif p1 != p2:
         err = "Passwords do not match."
-    if not err:
-        ue, ee = re.escape(u), re.escape(e)
-        if root_check(f"^    {ue}:$"):
-            err = "That username is already taken."
-        elif root_check(f'^ +email: "?{ee}"?\\s*$'):
-            err = "That email is already in use."
     if err:
         return render_page(error=err, old=old)
 
+    if rate_limited(client_ip()):
+        return render_page(error="Too many requests. Try again later.", old=old), 429
+
     try:
-        h = PH.hash(p1)
-        entry = (
-            f"    {u}:\n"
-            f"        password: \"{h}\"\n"
-            f"        email: {e}\n"
-            f"        groups: [pending]\n"
-            f"        disabled: false\n"
-        )
-        root_append(entry)
-        v = validate_config()
-        if v:
-            raise RuntimeError("config validation failed: " + v[-300:])
-        if not restart_authelia():
-            raise RuntimeError("authelia did not come back up")
-        notify_admin(u, e)
+        add_user(u, e, PH.hash(p1))
+    except SignupError as ex:
+        return render_page(error=str(ex), old=old)
     except Exception:
+        app.logger.exception("signup failed")
         return render_page(
             error="Something went wrong on our side; nothing was created. Try again later.",
             old=old), 500
+
+    try:
+        notify_admin(u, e)
+    except Exception:
+        app.logger.exception("approval email failed (account was created)")
     return render_success(u)
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, threaded=True)
