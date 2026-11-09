@@ -485,7 +485,7 @@ services:
       - OAUTH_CLIENT_ID=open-webui
       - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET}
       - OAUTH_SCOPES=openid email profile groups
-      - OAUTH_MERGE_ACCOUNTS_BY_EMAIL=true   # link Authelia login to the existing account (same email)
+      - OAUTH_MERGE_ACCOUNTS_BY_EMAIL=false  # existing accounts are already linked (oauth sub); true + unverified signup emails = account takeover
       - ENABLE_OAUTH_SIGNUP=true             # Authelia users can sign up...
       - OAUTH_AUTO_REDIRECT=true             # go straight to the Authelia login...
       - ENABLE_LOGIN_FORM=false              # ...no password form (emergency: /auth?form=1)
