@@ -99,8 +99,10 @@ The same pattern applies to any other variable: edit `.env`, then `docker compos
   against Authelia 1FA and auto-creates users (admin from the `admin` group; grant
   libraries once per new user). An OIDC "Sign in with SSO" door (SSO-Auth plugin +
   its Authelia client) was tried and removed the same day — the form is the login, 1FA.
-  TV/phone: use the public `https://jellyfin.ftoralesacosta.me` (NAT hairpin verified
-  from the LAN) with the same Authelia username+password.
+  TV/phone: use `https://jellyfin.ftoralesacosta.me` — the router's dnsmasq
+  split-DNS (`address=` records in /etc/config/dhcp) resolves it to
+  192.168.4.51 for LAN clients, so media stays on the LAN; remote clients
+  go via Cloudflare. Same Authelia username+password.
   Break-glass if Authelia is down: `authelia/jellyfin-breakglass.sh`.
 - Plan and status of the wider rollout: [homelab-sso-rollout.md](homelab-sso-rollout.md).
 
