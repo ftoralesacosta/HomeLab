@@ -1,67 +1,52 @@
 # Nginx Proxy Manager
 
-Edge reverse proxy (container `reverse-proxy`, image `jc21/nginx-proxy-manager`): ports `80`/`443`,
-TLS via Let's Encrypt, proxy hosts for `*.ftoralesacosta.me`. The admin UI is LAN-only at
-http://192.168.4.51:81 (away: `ssh -L 8181:localhost:81 fernando@ftoralesacosta.me`).
+NPM is the reverse proxy on ports 80 and 443. It gives each `*.ftoralesacosta.me` subdomain a
+TLS certificate and sends it to a container.
 
-Proxy hosts live in NPM's own database (`${DOCKERDIR}/nginx-proxy-manager/data`), **not** in this
-repo. Manage them from the UI or with the CLI below — the CLI uses the same REST API as the UI.
+- Admin UI: http://192.168.4.51:81 (LAN only). When you are away:
+  `ssh -L 8181:localhost:81 fernando@ftoralesacosta.me`, then open http://localhost:8181.
+- Proxy hosts are in NPM's database (`${DOCKERDIR}/nginx-proxy-manager/data`), not in this repo.
+- [`snippets/authelia.conf`](snippets/authelia.conf) is the Authelia gate. NPM mounts it read-only at `/snippets`.
 
-## Files
+## add-host.sh
 
-| File | In git | Contents |
-|---|---|---|
-| `add-host.sh` | yes | CLI for proxy hosts (see below) |
-| `snippets/authelia.conf` | yes | Authelia gate snippet, mounted read-only at `/snippets` in the container |
-
-## add-host.sh — manage proxy hosts from the shell
-
-Login: `NPM_ADMIN_EMAIL` from `../.env`. The password is **prompted with hidden input and
-never stored** — `NPM_ADMIN_PASSWORD` in the environment or `../.env` is only for
-non-interactive/scripted use. A fresh login token is used per run; nothing is cached.
-See `--help` for all options.
+`add-host.sh` creates, changes, lists and deletes proxy hosts. It uses the same API as the UI.
+It reads `NPM_ADMIN_EMAIL` from `../.env` and asks for the password. It does not store the password.
 
 ```bash
-./add-host.sh --list                                            # all hosts: forward, SSL, gate
-./add-host.sh lidarr.ftoralesacosta.me lidarr:8686             # create with Let's Encrypt
-./add-host.sh bindery.ftoralesacosta.me bindery:8787 --authelia  # create behind the SSO gate
-./add-host.sh new.ftoralesacosta.me service:1234 --cert 7     # create, reuse the wildcard cert
-./add-host.sh books.example.com bindery:8787 --authelia --dry-run  # show payloads, change nothing
-./add-host.sh kavita.ftoralesacosta.me kavita:5000 --update    # update existing (keeps its cert)
-./add-host.sh --delete test.example.com                         # prompts; -y skips
+./add-host.sh --list                                              # all hosts: target, SSL, gate
+./add-host.sh kavita.ftoralesacosta.me kavita:5000                # new host
+./add-host.sh bindery.ftoralesacosta.me bindery:8787 --authelia   # new host behind the gate
+./add-host.sh kavita.ftoralesacosta.me kavita:5000 --update       # change a host (keeps its certificate)
+./add-host.sh test.ftoralesacosta.me test:80 --dry-run            # show what it would send
+./add-host.sh --delete test.ftoralesacosta.me                     # asks first; -y skips the question
 ```
 
-Defaults: **SSL on** (Force SSL), WebSockets on, HTTP/2 on, Block Common Exploits on.
-Certificates: an existing NPM certificate covering the domain is **reused automatically** — all
-hosts in this stack share the wildcard `*.ftoralesacosta.me` (cert 7), so new hosts pick it up
-with no extra flags. `--cert <id>` pins a specific certificate, `--new-cert` requests a dedicated
-Let's Encrypt one instead (create only), `--no-ssl` skips SSL for quick LAN-only tests.
-`--update` treats the flags as the source of truth but always keeps an attached certificate
-(`--cert` on an update overrides it); without it an existing domain is an error.
+Run `./add-host.sh --help` for all options.
 
-Forward to the **container name** (`lidarr`, `bindery`, ...) — NPM shares `proxy-net` with the
-stack. Wildcard domains (`*.ftoralesacosta.me`) must use DNS challenges, which this CLI does
-not manage — create those in the UI.
+- **Defaults:** Force SSL, WebSockets, HTTP/2 and "Block Common Exploits" are on.
+- **Certificates:** the script uses an existing certificate that covers the name. All hosts share
+  the wildcard `*.ftoralesacosta.me` (certificate 7), so you do not need a certificate flag.
+  The script cannot make wildcard certificates (they need a DNS challenge). Use the UI for them.
+- **`--update`:** the flags you give replace the host's settings. Give the flags again for
+  settings that are not default (for example `--no-http2`).
+- **Target:** use the container name (`kavita:5000`), not the host IP. NPM is on `proxy-net` with the apps.
 
-### Gated hosts (`--authelia`)
+## The gate (`--authelia`)
 
-Only adds `include /snippets/authelia.conf;` to the host's Advanced config: visitors are
-redirected to the Authelia login. Who may pass is set by `access_control` in
-`authelia/configuration.yml` — add a rule and `docker restart authelia`. Apps that consume the
-forwarded `Remote-User` (Bindery) **must** never be routed without the snippet; see
-[snippets/authelia.conf](snippets/authelia.conf) and the SSO section in [../README.md](../README.md).
+`--authelia` adds one line to the host's Advanced config: `include /snippets/authelia.conf;`.
+Visitors then go to the Authelia login. To decide who gets through, add a rule to
+`access_control` in `../authelia/configuration.yml` and restart Authelia. Until a rule exists,
+Authelia refuses everyone.
 
-### SSL notes
+The gate also sends the user name to the app in the `Remote-User` header. Apps that trust this
+header (Bindery) must never have a host without the gate, because then a visitor could send any name.
 
-- New certs: Let's Encrypt HTTP-01 — the domain's DNS must point here and ports 80/443 must
-  reach NPM (port-forwarded; Cloudflare proxy must be off for the challenge).
-- The issue waits ~90 s for validation, then returns; NPM finishes in the background either way.
-  Pending/failed: `docker exec nginx-proxy-manager tail -n 30 /data/logs/letsencrypt.log`.
-- NPM < 2.13 (this stack) needs the LE "agree" meta on cert requests — the CLI detects the
-  version and handles both shapes.
+## Problems
 
-### Troubleshooting
-
-- `NPM login failed (HTTP 401)` — wrong `NPM_ADMIN_EMAIL` in `../.env` or mistyped password.
-- `create failed (HTTP 400)` — usually a duplicate domain or invalid forward host.
-- Host created but site is 502 — wrong forward host/port or the target is not on `proxy-net`.
+| Message or symptom | Cause |
+|---|---|
+| `NPM login failed (HTTP 401)` | Wrong `NPM_ADMIN_EMAIL` in `../.env`, or wrong password |
+| `create failed (HTTP 400)` | The name already exists, or the target is not valid |
+| The site shows 502 | Wrong container name or port, or the container is not on `proxy-net` |
+| A new certificate does not come | Let's Encrypt uses HTTP-01: DNS must point here and the Cloudflare proxy must be off for that name. Log: `docker exec nginx-proxy-manager tail -n 30 /data/logs/letsencrypt.log` |

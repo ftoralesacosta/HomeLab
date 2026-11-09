@@ -144,7 +144,7 @@ cd ~/HomeLab
 export SONARR_API_KEY=$(docker exec sonarr sed -n 's:.*<ApiKey>\(.*\)</ApiKey>.*:\1:p' /config/config.xml)
 export RADARR_API_KEY=$(docker exec radarr sed -n 's:.*<ApiKey>\(.*\)</ApiKey>.*:\1:p' /config/config.xml)
 RUN() { docker run --rm --network homelab_proxy-net -e SONARR_API_KEY -e RADARR_API_KEY \
-        -v "$PWD/backup":/app:ro -v /tmp/data/staging/exports:/x:ro python:3-alpine \
+        -v "$PWD/backup":/app:ro -v /tmp/data/staging/exports:/x:ro python:3.12-alpine \
         python /app/readd-media.py /x --sonarr http://sonarr:8989 --radarr http://radarr:7878 "$@"; }
 RUN                    # dry run: lists what it would add
 RUN --apply --search   # add everything and start searching
