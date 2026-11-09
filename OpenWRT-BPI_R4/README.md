@@ -13,11 +13,10 @@ Status: in production since 2026-10-24.
 
 | Path | What | In git |
 |---|---|---|
-| [`scripts/`](scripts/) | Run on the Debian server: stick access, provisioning, cutover, rollback, eMMC env rescue | yes |
+| [`scripts/`](scripts/) | Run on the Debian server: stick access, provisioning, rollback, eMMC env rescue. One-off bring-up/cutover scripts were removed 2026-11-09 (in git history before that date) | yes |
 | [`router/`](router/) | Files installed on the router (`/etc/init.d/gpon-stick`, `/root/*.sh`) | yes |
 | [`sfp-patch/`](sfp-patch/) | Tools that binary-patch the kernel's `sfp.ko` (see §4.1) | yes |
-| [`docs/`](docs/) | [Clean fix plan](docs/future-sfp-quirk.md), [fiber cutover steps](docs/phase3-cutover-steps.md) (done; reference) | yes |
-| [`archive/`](archive/) | Obsolete bring-up scripts from the first eMMC install (reference only) | yes |
+| [`docs/`](docs/) | [Clean fix plan](docs/future-sfp-quirk.md) | yes |
 | `local/` | Firmware images, config backups, logs, raw dumps, stick firmware, private notes (ONT serial etc.) | **no** (gitignored) |
 
 ---

@@ -168,4 +168,7 @@ Hermes) and `192.168.4.51:8888` (LAN browser access). NPM host `ha` → `192.168
 
 Router setup (OpenWrt, GPON fiber stick, patches, recovery): [OpenWRT-BPI_R4/](OpenWRT-BPI_R4/README.md).
 
+Host hardening (fail2ban with the journald backend, security-only unattended-upgrades, no auto-reboot):
+`sudo bash ~/HomeLab/server/harden-host.sh` (idempotent; re-run after a reinstall).
+
 Backups (nightly restic → 2nd NVMe + Google Drive, restore steps): [backup/README.md](backup/README.md).

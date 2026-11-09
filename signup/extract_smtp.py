@@ -1,7 +1,8 @@
-"""One-shot: build signup/smtp.env from the live config + .env.
+"""Build signup/smtp.env from the live Authelia config + .env.
 
-Runs in a container with ~/HomeLab mounted at /ro (configuration.yml and .env are mode 600). Prints nothing
-sensitive: only a confirmation.
+Re-run after changing GMAIL_APP_PASSWORD in .env, then: docker compose up -d signup
+    python3 ~/HomeLab/signup/extract_smtp.py
+Prints nothing sensitive: only a confirmation.
 """
 import os
 import re
@@ -18,10 +19,11 @@ def load_env(p):
     return d
 
 
-env = load_env("/ro/.env")
-cfg = yaml.safe_load(open("/ro/authelia/configuration.yml"))
+HL = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+env = load_env(f"{HL}/.env")
+cfg = yaml.safe_load(open(f"{HL}/authelia/configuration.yml"))
 smtp = cfg["notifier"]["smtp"]
-users = yaml.safe_load(open("/ro/authelia/users/auth_file.yml"))["users"]
+users = yaml.safe_load(open(f"{HL}/authelia/users/auth_file.yml"))["users"]
 me = next(v for k, v in users.items() if k.lower() == "fernando")
 
 from urllib.parse import urlparse
@@ -37,8 +39,7 @@ out = (
     f"MAIL_FROM={smtp.get('sender') or smtp['username']}\n"
     f"NOTIFY_TO={me['email']}\n"
 )
-p = "/out/smtp.env"
+p = f"{HL}/signup/smtp.env"
 open(p, "w").write(out)
 os.chmod(p, 0o600)
-os.chown(p, 1000, 1000)
 print("smtp.env written (7 values, none printed)")
