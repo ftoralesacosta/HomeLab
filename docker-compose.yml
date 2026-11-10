@@ -317,6 +317,19 @@ services:
       <<: *tz
       # Default is 20MB, which a few years of budget history can outgrow.
       ACTUAL_UPLOAD_FILE_SYNC_SIZE_LIMIT_MB: "100"
+      # Login through Authelia (OIDC client "actual-budget", admin_only policy). On start the
+      # server makes OpenID the active method; the first OpenID login becomes the owner.
+      ACTUAL_OPENID_DISCOVERY_URL: https://auth.ftoralesacosta.me
+      ACTUAL_OPENID_SERVER_HOSTNAME: https://budget.ftoralesacosta.me
+      ACTUAL_OPENID_PROVIDER_NAME: Authelia
+      ACTUAL_OPENID_CLIENT_ID: actual-budget
+      ACTUAL_OPENID_CLIENT_SECRET: ${ACTUAL_OPENID_CLIENT_SECRET}
+      # Hide the password option in the web UI (OpenID only).
+      ACTUAL_OPENID_ENFORCE: "true"
+      # "password" stays allowed ONLY for the scripts (actual-ai, bank-sync, daily-fixups), which
+      # reach actual-budget:5006 on the Docker network. NPM rejects non-OpenID logins from the
+      # internet (Lua filter on /account/login in the budget. host). "header" is dropped.
+      ACTUAL_ALLOWED_LOGIN_METHODS: openid,password
     volumes:
       # Holds server-files/ (accounts, SimpleFIN keys) and user-files/ (budgets).
       - ${DOCKERDIR}/actual-budget/data:/data

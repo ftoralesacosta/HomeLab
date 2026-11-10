@@ -32,10 +32,29 @@ When you add a credit card or account, update the account list at the top of `da
 - `ACTUAL_UPLOAD_FILE_SYNC_SIZE_LIMIT_MB=100`: the default 20 MB is too small for a few years of history.
 - `ACTUAL_TRUSTED_PROXIES` is not set. Its default already includes the private ranges, so it
   trusts NPM on the Docker network.
-- Actual has no Authelia gate. A gate would stop the Actual desktop and mobile apps from syncing.
-  The server password protects the budget, so make it long and random.
+- Login is **OpenID through Authelia** (see "Login" below). There is no forward-auth gate
+  (`authelia.conf`), so the web app and PWA sync normally. The desktop (Electron) app is not used.
 - The public address must use HTTPS. Actual's encryption needs `window.crypto.subtle`, and browsers
   only give that to secure sites. NPM supplies the HTTPS. The LAN port 5006 stays plain HTTP.
+
+## Login (Authelia OpenID)
+
+- Authelia OIDC client `actual-budget`, policy `admin_only` (group `admin`, two-factor).
+  Plaintext secret: `ACTUAL_OPENID_CLIENT_SECRET` in `~/HomeLab/.env`; digest in
+  `authelia/configuration.yml`. Callback: `https://budget.ftoralesacosta.me/openid/callback`.
+- The `ACTUAL_OPENID_*` variables are in the compose file. When the server starts with them, it makes
+  OpenID the active login method. `ACTUAL_OPENID_ENFORCE=true` hides the password option in the UI.
+- The **first** OpenID login became the server owner, and the budget files moved to that user.
+  Other Authelia users cannot log in until the owner adds them in Actual (*Server → User Directory*),
+  and they also need the `admin` group in Authelia.
+- **The scripts still use the server password** (`ACTUAL_PASSWORD`). `@actual-app/api` can only log in with
+  a password, so `ACTUAL_ALLOWED_LOGIN_METHODS=openid,password`. The scripts connect to
+  `http://actual-budget:5006` on the Docker network. From the internet, NPM allows only OpenID logins:
+  the `budget.` host includes `nginx-proxy-manager/snippets/actual-login-filter.conf`, which returns 403
+  for any `POST /account/login` that is not `loginMethod: "openid"`.
+- LAN port 5006 skips NPM, so password login still works from the LAN.
+- To go back to password-only: remove the `ACTUAL_OPENID_*` and `ACTUAL_ALLOWED_LOGIN_METHODS` lines,
+  then in Actual use *Settings → Authentication → Switch to password* (this needs the server password).
 
 ## SimpleFIN
 
