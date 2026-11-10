@@ -149,6 +149,7 @@ identity_providers:
       # Actual Budget: plaintext secret goes in ~/HomeLab/.env as ACTUAL_OPENID_CLIENT_SECRET.
       - client_id: 'actual-budget'
         client_name: 'Actual Budget'
+        consent_mode: 'implicit'
         client_secret: '$pbkdf2-sha512$REPLACE_WITH_DIGEST'
         public: false
         authorization_policy: 'admin_only'
@@ -165,6 +166,7 @@ identity_providers:
       # Open WebUI: plaintext secret goes in ~/HomeLab/.env as OAUTH_CLIENT_SECRET.
       - client_id: 'open-webui'
         client_name: 'Open WebUI'
+        consent_mode: 'implicit'
         client_secret: '$pbkdf2-sha512$REPLACE_WITH_DIGEST'
         public: false
         authorization_policy: 'approved'
