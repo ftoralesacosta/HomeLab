@@ -98,7 +98,7 @@ gated apps need a second factor (TOTP or security key). Details: [authelia/READM
 | *arr apps, Seerr | Gate. `/api` skips the gate for API-key clients | admin, family |
 | Bazarr | Gate, plus its own login | admin, family |
 | Bindery | Gate. Bindery takes the user name from the gate | admin, family |
-| Open WebUI | OIDC ("Continue with Authelia"), then I approve the account | admin, family, friends |
+| Open WebUI | OIDC ("Continue with Authelia"); the account is created as a normal *user* | admin, family, friends |
 | Jellyfin | Its own login form; a plugin checks the password against Authelia | admin, family |
 | Kavita, Actual | Their own login | — |
 

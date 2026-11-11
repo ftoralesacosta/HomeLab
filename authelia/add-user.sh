@@ -50,8 +50,5 @@ Added '$U' ($N, $E, groups: [${G}]). Authelia reloads the users file by itself.
 Send them:
   Go to https://webui.ftoralesacosta.me and click "Continue with Authelia".
   Click "Reset password?" and enter $U (or $E). Open the email link within 30 minutes,
-  choose a password, then log in. Accept the consent screen. You will see "pending"
-  until I approve you.
-
-Then approve them: Open WebUI -> Admin Panel -> Users -> role "pending" -> "user".
+  choose a password, then log in. Accept the consent screen and you are in as a normal user.
 EOF

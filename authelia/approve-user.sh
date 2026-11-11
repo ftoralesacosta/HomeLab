@@ -6,9 +6,8 @@
 #   approve-user.sh bonnie friends     # Open WebUI only (no media apps)
 #
 # No restart needed: Authelia watches users/auth_file.yml and reloads it.
-# Remember the WebUI half: WebUI -> Admin Panel -> Users -> role "pending" -> "user".
 set -euo pipefail
-[ $# -ge 1 ] || { sed -n '3,9p' "$0"; exit 1; }
+[ $# -ge 1 ] || { sed -n '3,8p' "$0"; exit 1; }
 U=$1; G=${2:-family}
 [[ $U =~ ^[a-z0-9._-]+$ ]] || { echo "invalid username"; exit 1; }
 [[ $G =~ ^[a-z0-9._-]+$ ]] || { echo "invalid group"; exit 1; }
@@ -43,4 +42,4 @@ if docker logs --since 10s authelia 2>&1 | grep -qiE 'level=(error|fatal)'; then
   echo "WARNING: Authelia logged an error after the reload:"; docker logs --since 10s authelia 2>&1 | tail -5
 fi
 echo "Approved '$U' (groups: [$G]). Authelia reloads the users file by itself."
-echo "WebUI half (if they use it): Open WebUI -> Admin Panel -> Users -> role 'pending' -> 'user'."
+echo "They can now log in to Open WebUI with 'Continue with Authelia' (no WebUI approval needed)."

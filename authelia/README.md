@@ -39,7 +39,9 @@ click **Reset password?** on the login page, choose a password, and log in.
 **Self-signups** (https://signup.ftoralesacosta.me) start in the `pending` group, and you get an
 email. Signup does not verify the email address, so check the request before you approve it.
 
-**Open WebUI** also has its own approval: Admin Panel → Users → change the role from *pending* to *user*.
+**Open WebUI** needs no separate approval. The OIDC login creates the account with role *user*
+(`DEFAULT_USER_ROLE=user`): Authelia's `approved` policy already vetted the group, so anyone who can
+complete the OIDC login is allowed in.
 
 Groups: `admin`, `family`, `friends`, `pending`. Never give `admin` to friends.
 
@@ -65,7 +67,7 @@ adding their own device.
 | Most apps | Gate | NPM host Advanced config: `include /snippets/authelia.conf;`. Then add a rule to `access_control` in `configuration.yml` and restart Authelia |
 | Sonarr, Radarr, Lidarr, Prowlarr | Gate | The apps use `AuthenticationMethod=External` (config.xml), so the gate is their only login. `/api` and `/<n>/api` skip the gate |
 | Bindery | Gate + user name from the gate | Auth mode `proxy`, set with `PUT /api/v1/auth/mode`. It reads the `Remote-User` header. The first admin's user name must be the same as in Authelia |
-| Open WebUI | OIDC client `open-webui` | Authorization policy `approved` (admin, family, friends with 2FA). `OAUTH_MERGE_ACCOUNTS_BY_EMAIL=false` |
+| Open WebUI | OIDC client `open-webui` | Authorization policy `approved` (admin, family, friends with 2FA). `OAUTH_MERGE_ACCOUNTS_BY_EMAIL=false`, `DEFAULT_USER_ROLE=user` |
 | Jellyfin | Authelia-Auth plugin | The plugin's Authelia URL must be `https://auth.ftoralesacosta.me`. Its Jellyfin URL `https://jellyfin.ftoralesacosta.me/authz` must match the `^/authz$` rule. New users are created automatically, and the `admin` group gets Jellyfin admin. You must give new users library access once |
 
 **Add an OIDC app:**

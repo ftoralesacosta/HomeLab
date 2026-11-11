@@ -155,8 +155,7 @@ def notify_admin(username, email):
         "  - they are denied everywhere else (apps and OIDC) until you approve them\n\n"
         "Approve:\n"
         f"  ~/HomeLab/authelia/approve-user.sh {username}            # group: family\n"
-        f"  ~/HomeLab/authelia/approve-user.sh {username} friends    # Open WebUI only\n\n"
-        "If they need Open WebUI: WebUI -> Admin Panel -> Users -> role 'pending' -> 'user'."
+        f"  ~/HomeLab/authelia/approve-user.sh {username} friends    # Open WebUI only\n"
     )
     tls = e.get("SMTP_TLS", "starttls")
     port = int(e["SMTP_PORT"])
