@@ -118,21 +118,127 @@ Media files aren't backed up; they're too big and they're replaceable. Instead, 
 Titles that were unmonitored stay unmonitored and won't be searched; that's on purpose. Check that *Settings → Media Management → "Unmonitor deleted episodes/movies"* is **off** before step 4. It was off as of 2026-11-03; if it's on, missing files get unmonitored instead of re-downloaded.
 
 ### B. The whole server died
-1. New Debian box: install Docker, git, python3. `git clone https://github.com/ftoralesacosta/HomeLab ~/HomeLab`.
-2. `docker build -t homelab-backup:restic ~/HomeLab/backup`
-3. Create `~/HomeLab/.env` with just `RESTIC_PASSWORD`, `RCLONE_CONFIG_GDRIVE_TYPE=drive`, `RCLONE_CONFIG_GDRIVE_SCOPE=drive.file`, `_CLIENT_ID` and `_CLIENT_SECRET` (from the password manager). Then get a new `_TOKEN` (see the OAuth client steps above, step 6; use the existing client and add a new secret if needed).
-4. Restore everything from Google Drive (about 1 min per GB):
-   `./backup/backup.sh --restic gdrive restore latest --target /restore`, which writes to `/tmp/data/{staging,homelab}`.
-5. `cp /tmp/data/homelab/.env ~/HomeLab/.env`; also copy any other gitignored files you need from `/tmp/data/homelab/` (e.g. `OpenWRT-BPI_R4/local/`).
-6. Copy each app back using the table above (`sudo mkdir -p <host path> && sudo cp -a /tmp/data/staging/<app>/. <host path>/`).
-7. Mount the disks: media at `/mnt/media` (then step A2), and the second NVMe at `/mnt/data` (downloads + local backups).
-8. Start the stacks as described in the main [README](../README.md). Then do steps A4–A5.
-9. Re-add the cron jobs (`crontab -e`):
-   ```
-   30 3 * * * /home/fernando/HomeLab/backup/backup.sh >> /home/fernando/HomeLab/backup/logs/cron.log 2>&1
-   45 5 * * * timeout 900 docker exec actual-ai node /scripts/bank-sync.js >> /home/fernando/HomeLab/actual-ai/logs/cron.log 2>&1
-   45 6 * * * docker exec actual-ai node /scripts/daily-fixups.js >> /home/fernando/HomeLab/actual-ai/logs/cron.log 2>&1
-   ```
+Rebuild the box from **two sources**: **git** (this repo — compose file, scripts, docs) and **restic** (every app's data, databases and secrets, from Google Drive). Media files are *not* restored; step 11 re-downloads them. Budget about an hour, mostly the restic download.
+
+**Before you start**, have these three values from your password manager: `RESTIC_PASSWORD`, `RCLONE_CONFIG_GDRIVE_CLIENT_ID`, `RCLONE_CONFIG_GDRIVE_CLIENT_SECRET`. Everything else — the full `.env`, the Authelia config, every app database — comes out of the restic snapshot in step 4.
+
+**1. Base system.** Install Debian 12, set the hostname to `debian`, give it the LAN address **192.168.4.51** (DHCP reservation or static), and confirm `ssh fernando@192.168.4.51` works. Then install the tooling. Note that the `docker compose` **v2 plugin** must come from Docker's own apt repo:
+```bash
+sudo apt-get update
+sudo apt-get install -y git python3 curl ca-certificates gnupg
+
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/debian/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" \
+  | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+sudo usermod -aG docker fernando      # then log out and back in (or run: newgrp docker)
+docker compose version && docker run --rm hello-world
+```
+
+**2. Clone the repo and build the backup image.**
+```bash
+git clone https://github.com/ftoralesacosta/HomeLab ~/HomeLab
+docker build -t homelab-backup:restic ~/HomeLab/backup
+```
+
+**3. Write a minimal `.env` — only what restic needs.** Create `~/HomeLab/.env` (mode 600) with just these five lines, then add a fresh Google token:
+```bash
+cat > ~/HomeLab/.env <<'EOF'
+RESTIC_PASSWORD=...
+RCLONE_CONFIG_GDRIVE_TYPE=drive
+RCLONE_CONFIG_GDRIVE_SCOPE=drive.file
+RCLONE_CONFIG_GDRIVE_CLIENT_ID=xxxx.apps.googleusercontent.com
+RCLONE_CONFIG_GDRIVE_CLIENT_SECRET=xxxx
+EOF
+chmod 600 ~/HomeLab/.env
+```
+Mint the token over an SSH tunnel (rclone's login redirects to `localhost:53682`):
+```bash
+ssh -L 53682:localhost:53682 fernando@192.168.4.51        # run this on your laptop
+
+ID='xxxx.apps.googleusercontent.com'; SECRET='xxxx'        # back on the server
+B=$(printf '{"scope":"drive.file","client_id":"%s","client_secret":"%s"}' "$ID" "$SECRET" | base64 -w0 | tr -d '=')
+docker run --rm -it --network host --entrypoint rclone homelab-backup:restic authorize drive "$B"
+# open the printed http://127.0.0.1:53682/auth?... link, then append the printed token:
+echo 'RCLONE_CONFIG_GDRIVE_TOKEN=<paste the whole token>' >> ~/HomeLab/.env
+```
+> **Use the same Google OAuth client as before.** With the `drive.file` scope the files belong to that client; a different client cannot see the existing repo. A new *secret* added to the same client is fine.
+
+**4. Restore everything from restic.** This writes to `/tmp/data/{staging,homelab}` (the container's `/restore` is the host's `/tmp`). About 1 min per GB:
+```bash
+cd ~/HomeLab
+./backup/backup.sh --restic gdrive restore latest --target /restore
+```
+If the second NVMe (`/mnt/data`) survived, mount it first and use the faster local copy instead: `./backup/backup.sh --restic local restore latest --target /restore`.
+
+**5. Put the real config tree and secrets back.** The snapshot holds the whole `~/HomeLab`, including the gitignored files (`.env`, `authelia/configuration.yml`, `authelia/users/auth_file.yml`, `signup/smtp.env`, `OpenWRT-BPI_R4/local/`):
+```bash
+sudo cp -a /tmp/data/homelab/. ~/HomeLab/
+sudo chown -R fernando:fernando ~/HomeLab
+chmod 600 ~/HomeLab/.env
+```
+
+**6. Mount the disks.** Second NVMe at `/mnt/data` (downloads + local backups) and the media drive at `/mnt/media`:
+```bash
+sudo mkdir -p /mnt/media /mnt/data
+sudo blkid            # copy each UUID into /etc/fstab
+```
+`/etc/fstab` lines (same as the original server):
+```
+UUID=<data-uuid>  /mnt/data   ext4  defaults         0 2
+UUID=<media-uuid> /mnt/media  ext4  defaults,nofail  0 2
+```
+```bash
+sudo mount -a
+sudo mkdir -p /mnt/media/{Shows,Anime,Movies} /mnt/data/{Downloads,backups}
+sudo chown -R 1000:1000 /mnt/media /mnt/data
+```
+
+**7. Copy each app's data back** using the [Staging folder → Host path](#restore) table above. The *arr apps, for example:
+```bash
+for app in sonarr radarr lidarr prowlarr seerr bindery kavita; do
+  sudo mkdir -p ~/.volumes/$app/config
+  sudo cp -a /tmp/data/staging/$app/. ~/.volumes/$app/config/
+done
+```
+Repeat for every row you need (`bazarr`, `sabnzbd`, `qbittorrent`, `nginx-proxy-manager`, `home-assistant`, `homebridge`, `authelia`, `jellyfin`, `actual-budget`, `open-webui`, `hermes`, `minecraft`), then fix ownership:
+```bash
+sudo mkdir -p ~/.volumes/bindery        # must exist and be owned by 1000 before start
+sudo chown -R 1000:1000 ~/.volumes
+```
+
+**8. Start the whole stack.**
+```bash
+cd ~/HomeLab
+docker compose up -d
+docker compose ps                       # everything Up (or healthy)
+```
+
+**9. Harden the host and reinstall the systemd pieces.**
+```bash
+sudo bash ~/HomeLab/server/harden-host.sh          # fail2ban + unattended security upgrades
+sudo bash ~/HomeLab/systemd/install-hermes-env.sh  # hermes-env.service + hermes-gateway drop-in
+```
+`hermes-gateway.service` itself is **not** in this repo — it ships with the Hermes install. Reinstall Hermes first, then run `install-hermes-env.sh` so the drop-in applies.
+
+**10. Re-add the cron jobs** (`crontab -e`):
+```
+30 3 * * * /home/fernando/HomeLab/backup/backup.sh >> /home/fernando/HomeLab/backup/logs/cron.log 2>&1
+45 5 * * * timeout 900 docker exec actual-ai node /scripts/bank-sync.js >> /home/fernando/HomeLab/actual-ai/logs/cron.log 2>&1
+45 6 * * * docker exec actual-ai node /scripts/daily-fixups.js >> /home/fernando/HomeLab/actual-ai/logs/cron.log 2>&1
+```
+
+**11. Re-download the media** — do **steps A4–A5** above (Sonarr/Radarr *Update All* → *Wanted → Missing → Search All*).
+
+**12. Confirm backups are healthy again.**
+```bash
+./backup/backup.sh
+cat backup/logs/last-status.json        # expect "ok": true
+```
 
 ### C. The Sonarr/Radarr configs are lost or broken too
 Start fresh Sonarr/Radarr. Set up Prowlarr and the download clients, or restore just those apps. Then re-add every title from the list ([`readd-media.py`](readd-media.py), stdlib Python, dry run by default):
