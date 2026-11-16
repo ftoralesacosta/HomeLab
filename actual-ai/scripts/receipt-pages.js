@@ -3,8 +3,9 @@
 // served by Nginx Proxy Manager at https://receipts.ftoralesacosta.me behind Authelia (admin only).
 //   /receipts/index.html          every transaction, newest first, grouped by month
 //   /receipts/t/<transaction id>.html
-//   /receipts/files/<transaction id>[-anything].(jpg|jpeg|png|webp|gif|heic|pdf)   <- YOU drop receipts here;
-//                                  they are shown/linked on that transaction's page on the next run.
+//   /receipts/files/<transaction id>[-anything].(jpg|jpeg|png|webp|gif|heic|pdf)   receipts: uploaded with the
+//                                  page's "Attach receipt" button (nginx WebDAV PUT, see snippets/receipts.conf)
+//                                  or dropped here by hand. Pages list them live, no rebuild needed.
 // Run daily at 06:50 (fernando's crontab, after daily-fixups.js); safe to run any time:
 //   docker exec actual-ai node /scripts/receipt-pages.js
 const api = require('/opt/node_app/node_modules/@actual-app/api');
@@ -54,7 +55,45 @@ button{font:inherit;border:1px solid var(--line);background:#fff;border-radius:8
 .list td{padding:7px 10px;border-top:1px solid var(--line);font-size:14px}.list td.r{text-align:right;white-space:nowrap}
 .list td.d{white-space:nowrap;color:var(--mut)}
 input#q{width:100%;padding:8px 12px;border:1px solid var(--line);border-radius:8px;font:inherit}
-@media print{body{background:#fff}.bar,.noprint{display:none}.card{border:0;padding:0}.wrap{margin:0;max-width:none}}
+.att{display:flex;flex-direction:column;gap:12px;margin-top:10px}
+.att .it{position:relative}.att img{max-width:100%;border:1px solid var(--line);border-radius:8px;display:block}
+.att .del{position:absolute;top:8px;right:8px;background:rgba(255,255,255,.92);font-size:13px;padding:2px 10px}
+.att .pdf{display:flex;align-items:center;gap:12px}
+.up{display:flex;align-items:center;gap:12px;margin-top:14px}
+.btn{display:inline-block;border:1px solid var(--acc);color:var(--acc);border-radius:8px;padding:6px 14px;cursor:pointer;font-weight:500}
+.btn:hover{background:#eef5ff}#st{color:var(--mut);font-size:14px}#st.err{color:#c00}
+@media print{.del{display:none}body{background:#fff}.bar,.noprint{display:none}.card{border:0;padding:0}.wrap{margin:0;max-width:none}}
+`;
+
+const CLIENT_JS = String.raw`
+const E=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const att=document.getElementById('att'),st=document.getElementById('st'),h=document.getElementById('atth');
+const say=(m,e)=>{st.textContent=m;st.className=e?'err':''};
+const enc=encodeURIComponent;
+function tile(n){const d=document.createElement('div');d.className='it'+(/\.pdf$/i.test(n)?' pdf':'');const u='/files/'+enc(n);
+ d.innerHTML=/\.pdf$/i.test(n)?'<a href="'+u+'">📄 '+E(n)+'</a>':'<a href="'+u+'"><img src="'+u+'" alt="'+E(n)+'"></a>';
+ const img=d.querySelector('img');if(img)img.onerror=()=>{d.innerHTML='<a href="'+u+'">🖼 '+E(n)+'</a>';addDel(d,n)};
+ addDel(d,n);return d}
+function addDel(d,n){const b=document.createElement('button');b.className='del';b.textContent='Remove';
+ b.onclick=async()=>{if(!confirm('Remove this receipt?'))return;const r=await fetch('/files/'+enc(n),{method:'DELETE'});
+ if(r.ok||r.status===204){load();say('Removed.')}else say('Remove failed ('+r.status+'). Reload the page and try again.',1)};d.appendChild(b)}
+async function load(){try{const r=await fetch('/files/',{cache:'no-store'});if(!r.ok)return;const l=await r.json();
+ const mine=l.filter(x=>x.type==='file'&&x.name.startsWith(TX)).sort((a,b)=>new Date(a.mtime)-new Date(b.mtime));
+ att.replaceChildren(...mine.map(x=>tile(x.name)));h.className=mine.length?'':'noprint'}catch(e){}}
+function ext(f){const m=(f.name.match(/\.([A-Za-z0-9]+)$/)||[])[1];let e=(m||'').toLowerCase();
+ if(!e){e={'image/jpeg':'jpg','image/png':'png','image/heic':'heic','image/heif':'heif','image/webp':'webp','image/gif':'gif','application/pdf':'pdf'}[f.type]||''}
+ if(e==='jpeg')e='jpg';return ['jpg','png','webp','gif','heic','heif','pdf'].includes(e)?e:null}
+document.getElementById('f').onchange=async(ev)=>{const fs=[...ev.target.files];ev.target.value='';let ok=0;
+ for(const [i,f] of fs.entries()){const e=ext(f);if(!e){say(f.name+': only images or PDF',1);continue}
+  if(f.size>25*1024*1024){say(f.name+': larger than 25 MB',1);continue}
+  say('Uploading '+(fs.length>1?(i+1)+'/'+fs.length+' ':'')+'…');
+  const name=TX+'-'+new Date().toISOString().replace(/[-:.TZ]/g,'').slice(0,14)+(fs.length>1?'_'+(i+1):'')+'.'+e;
+  try{const r=await fetch('/files/'+name,{method:'PUT',body:f,headers:{'Content-Type':f.type||'application/octet-stream'}});
+   if(r.ok&&new URL(r.url).pathname.startsWith('/files/'))ok++;
+   else{say(r.redirected?'Login expired: reload the page, log in, then try again.':'Upload failed ('+r.status+').',1);return}}
+  catch(err){say('Upload failed: '+err.message,1);return}}
+ if(ok){say(ok>1?ok+' receipts attached.':'Receipt attached.');load()}};
+load();
 `;
 
 const page = (title, body) => `<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -107,10 +146,13 @@ const page = (title, body) => `<!doctype html><html lang="en"><head><meta charse
       ['Actual transaction ID', `<code>${esc(t.id)}</code>`],
     ].filter(([, v]) => v);
     const split = subs ? `<h3>Split</h3><table class="kv">${subs.map((s) => `<tr><th>${esc(cats[s.category] || 'Uncategorized')}</th><td>${money(s.amount, cur)}${s.notes ? ' — ' + esc(s.notes) : ''}</td></tr>`).join('')}</table>` : '';
-    const attHtml = att.length ? `<h3>Receipt</h3><div class="files">${att.map((f) => /\.pdf$/i.test(f)
-      ? `<p><a href="/files/${encodeURIComponent(f)}">📄 ${esc(f)}</a></p>`
-      : `<a href="/files/${encodeURIComponent(f)}"><img src="/files/${encodeURIComponent(f)}" alt="${esc(f)}"></a>`).join('')}</div>`
-      : `<p class="note noprint">No receipt attached. To attach one, save it as <code>files/${esc(t.id)}.jpg</code> (or .png/.pdf) in <code>~/HomeLab/actual-ai/receipts/</code>; it appears here after the next run.</p>`;
+    // attachments: rendered now (works without JS / when printing) and refreshed live from /files/ by the script
+    const tile = (f) => /\.pdf$/i.test(f)
+      ? `<div class="it pdf"><a href="/files/${encodeURIComponent(f)}">📄 ${esc(f)}</a></div>`
+      : `<div class="it"><a href="/files/${encodeURIComponent(f)}"><img src="/files/${encodeURIComponent(f)}" alt="${esc(f)}"></a></div>`;
+    const attHtml = `<h3 id="atth"${att.length ? '' : ' class="noprint"'}>Receipt</h3><div class="att" id="att">${att.map(tile).join('')}</div>
+<div class="up noprint"><label class="btn">📎 Attach receipt<input type="file" id="f" accept="image/*,application/pdf" multiple hidden></label><span id="st"></span></div>
+<script>const TX=${JSON.stringify(t.id)};${CLIENT_JS}</script>`;
     const body = `<div class="bar noprint"><a href="/">← All transactions</a><button onclick="print()">Print / Save as PDF</button></div>
 <div class="card"><h1>${esc(vendor)}</h1><p class="sub">Transaction record · ${esc(t.date)}</p>
 <div class="amt${t.amount > 0 ? ' in' : ''}">${money(t.amount, cur)}</div>

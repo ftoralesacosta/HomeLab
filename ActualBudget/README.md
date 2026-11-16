@@ -49,9 +49,10 @@ Each change is logged in `daily-fixups.jsonl` with the old Notes (`undo`).
 transaction (date, vendor, bank text, location, card, category, bank reference) plus a filterable
 index, written to `actual-ai/receipts/` (gitignored) and served by NPM at
 https://receipts.ftoralesacosta.me (Authelia, admin only; NPM host Advanced = `include /snippets/receipts.conf;`).
-The `[receipt]` link in each transaction's Notes opens its page. To attach a receipt, save it as
-`actual-ai/receipts/files/<transaction id>.jpg` (or `-2.jpg`, `.png`, `.pdf`; the ID is on the page)
-and run `docker exec actual-ai node /scripts/receipt-pages.js` (or wait for 06:50).
+The `[receipt]` link in each transaction's Notes opens its page. **Attach receipt** on the page uploads a
+photo/PDF (phone camera or files, max 25 MB) straight to `actual-ai/receipts/files/<transaction id>-<time>.<ext>`
+(nginx WebDAV PUT, `snippets/receipts.conf`; NPM's only writable mount); the page lists and removes attachments
+live. Dropping a file named `<transaction id>[-anything].jpg|png|pdf` into that folder by hand works too.
 
 **Dashboard**: "Spending by category (this month)" (donut) and "... (last 12 months)" (stacked bars),
 both excluding transfers.

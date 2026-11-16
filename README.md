@@ -20,7 +20,7 @@ Each web app has its own subdomain, for example `sonarr.ftoralesacosta.me`.
 | AI | `open-webui` (webui.), `searxng` (web search, LAN only). Hermes agent: systemd service `hermes-gateway`, not Docker, API on 127.0.0.1:8642 |
 | Media | `jellyfin` (player). `sonarr`, `radarr`, `lidarr` (TV, movies, music), `prowlarr` + `flaresolverr` (indexers), `bazarr` (subtitles), `seerr` (family requests). `bindery` + `kavita` (books: download + read) |
 | Downloads | `sabnzbd` (usenet), `qbittorrent` (torrents, through the `vpn` container) |
-| Home | `homeassistant` (ha.), `homebridge` |
+| Home | `homeassistant` (ha.) |
 | Other | `actual` + `actual-ai` (budget.), `mc` (Minecraft, port 25565), `website` (ftoralesacosta.me) |
 
 ## Daily operations

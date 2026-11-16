@@ -73,7 +73,6 @@ do_stage() {
   stage jellyfin       jellyfin        "$V/jellyfin/config"    ./metadata ./log ./data/trickplay ./data/library.db.old ./data/library.db.bak1
   stage nginx-proxy-manager nginx-proxy-manager "$V/nginx-proxy-manager" ./data/logs
   stage home-assistant homeassistant   "$V/home-assistant"
-  stage homebridge     homebridge      "$V/homebridge"
   stage authelia       authelia        "$V/authelia"
   stage open-webui     open-webui      /var/lib/docker/volumes/open-webui_open-webui/_data  ./cache
   stage hermes         ""              /var/lib/hermes/.hermes ./tools ./cache ./logs ./audio_cache ./image_cache

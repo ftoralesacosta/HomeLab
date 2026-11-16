@@ -37,6 +37,7 @@ services:
       - ${DOCKERDIR}/nginx-proxy-manager/letsencrypt:/etc/letsencrypt
       - ./nginx-proxy-manager/snippets:/snippets:ro   # Authelia gate snippet (read-only, outside /data)
       - ./actual-ai/receipts:/receipts:ro             # static receipt pages (receipt-pages.js), see snippets/receipts.conf
+      - ./actual-ai/receipts/files:/receipts/files    # writable: the pages' "Attach receipt" upload (WebDAV PUT/DELETE)
 
   # One DDNS updater for every DNS-only record that must follow the home IP.
   # Proxied subdomains don't need it (Cloudflare fronts them). mc. must stay
@@ -99,19 +100,6 @@ services:
       - ./signup/smtp.env:/etc/signup/smtp.env:ro
 
   # --- Home Automation ----------------------------------------------------------
-  homebridge:
-    image: homebridge/homebridge:latest
-    container_name: homebridge
-    restart: unless-stopped
-    network_mode: host
-    volumes:
-      - ${DOCKERDIR}/homebridge:/homebridge
-    logging:
-      driver: json-file
-      options:
-        max-size: "10mb"
-        max-file: "1"
-
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:stable
     container_name: homeassistant
