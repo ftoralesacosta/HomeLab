@@ -5,6 +5,8 @@ authelia/auth_file.yml
 authelia/users/
 OpenWRT-BPI_R4/local/
 actual-ai/logs/
+actual-ai/receipts/
+actual-transactions*.json
 backup/logs/
 *.bak.*
 backups/

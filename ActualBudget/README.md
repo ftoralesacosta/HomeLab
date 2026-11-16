@@ -38,6 +38,24 @@ docker exec actual-ai node /scripts/export-transactions.js > actual-transactions
 docker exec actual-ai node /scripts/export-transactions.js 2026-01-01 2026-12-31
 ```
 
+**Richer Notes** (`daily-fixups.js` step 3, daily 06:45, `NOTES_ENRICH=off|dry|live`, live since
+2026-11-16): appends what the bank sent but the register hides, after the existing Notes (the bank
+descriptor at the start is never changed, the transfer linker reads it):
+`... #actual-ai | Forest Hills, NY | card 8141 | ref a5f41890 | [receipt](https://receipts.ftoralesacosta.me/t/<id>.html)`.
+Location only appears when the bank text has a clear city (rare: Chase/Amazon/Apple never send one).
+Each change is logged in `daily-fixups.jsonl` with the old Notes (`undo`).
+
+**Receipt pages** (`receipt-pages.js`, daily 06:50, read-only on the budget): one printable page per
+transaction (date, vendor, bank text, location, card, category, bank reference) plus a filterable
+index, written to `actual-ai/receipts/` (gitignored) and served by NPM at
+https://receipts.ftoralesacosta.me (Authelia, admin only; NPM host Advanced = `include /snippets/receipts.conf;`).
+The `[receipt]` link in each transaction's Notes opens its page. To attach a receipt, save it as
+`actual-ai/receipts/files/<transaction id>.jpg` (or `-2.jpg`, `.png`, `.pdf`; the ID is on the page)
+and run `docker exec actual-ai node /scripts/receipt-pages.js` (or wait for 06:50).
+
+**Dashboard**: "Spending by category (this month)" (donut) and "... (last 12 months)" (stacked bars),
+both excluding transfers.
+
 ## Settings and reasons
 
 - `ACTUAL_UPLOAD_FILE_SYNC_SIZE_LIMIT_MB=100`: the default 20 MB is too small for a few years of history.

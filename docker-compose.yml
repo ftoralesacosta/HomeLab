@@ -36,6 +36,7 @@ services:
       - ${DOCKERDIR}/nginx-proxy-manager/data:/data
       - ${DOCKERDIR}/nginx-proxy-manager/letsencrypt:/etc/letsencrypt
       - ./nginx-proxy-manager/snippets:/snippets:ro   # Authelia gate snippet (read-only, outside /data)
+      - ./actual-ai/receipts:/receipts:ro             # static receipt pages (receipt-pages.js), see snippets/receipts.conf
 
   # One DDNS updater for every DNS-only record that must follow the home IP.
   # Proxied subdomains don't need it (Cloudflare fronts them). mc. must stay
@@ -420,6 +421,7 @@ services:
     volumes:
       - ./actual-ai/scripts:/scripts:ro
       - ./actual-ai/logs:/logs                       # daily-fixups.jsonl (gitignored: financial data)
+      - ./actual-ai/receipts:/receipts               # receipt-pages.js output + your receipt files (gitignored: financial data)
 
   # --- Games ------------------------------------------------------------------------
   mc:

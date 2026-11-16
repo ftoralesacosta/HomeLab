@@ -99,6 +99,7 @@ access_control:
       - "sabnzbd.ftoralesacosta.me"
       - "qbittorrent.ftoralesacosta.me"
       - "slskd.ftoralesacosta.me"
+      - "receipts.ftoralesacosta.me"
       policy: two_factor
       subject: "group:admin"
     - domain: "bazarr.ftoralesacosta.me"

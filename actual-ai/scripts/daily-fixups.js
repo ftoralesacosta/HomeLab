@@ -9,6 +9,12 @@
 //    dated on or up to 120 days before it, gets the purchase's category (so both net to 0) and
 //    "#refund-pair:<id>" in Notes on both. Nothing is deleted.
 //
+// 3. NOTES ENRICHER: appends what the bank sent but the register does not show, to the END of Notes
+//    (existing text, incl. the bank descriptor the transfer linker reads, is never changed):
+//    "| Forest Hills, NY | card 6824 | posted 2026-09-03 | ref a5f41890 | [receipt](https://receipts.../t/<id>.html)"
+//    (the link opens the receipt-pages.js page). Idempotent (keyed on "| ref ").
+//    NOTES_ENRICH=off|dry|live (default below); FIXUPS_DRY_RUN=true forces dry.
+//
 // Every decision is appended as one JSON line to /logs/daily-fixups.jsonl, with the values needed to undo it.
 // FIXUPS_DRY_RUN=true (default) logs only and changes nothing.
 //   docker exec actual-ai node /scripts/daily-fixups.js
@@ -20,6 +26,10 @@ const LOG = process.env.FIXUPS_LOG_FILE ?? '/logs/daily-fixups.jsonl';
 const TRANSFER_WINDOW_DAYS = 7;
 const REFUND_WINDOW_DAYS = parseInt(process.env.REFUND_WINDOW_DAYS ?? '120', 10);
 const REFUND_TAG = '#refund-pair:';
+const NOTES_MODE = (process.env.NOTES_ENRICH ?? 'live').toLowerCase();  // off | dry | live (live since 2026-11-16)
+const RECEIPTS_URL = process.env.RECEIPTS_URL ?? 'https://receipts.ftoralesacosta.me';  // receipt-pages.js
+const NOTES_REF = '| ref ';
+const US_STATES = new Set('AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY DC PR'.split(' '));
 
 // Bank text (notes or imported payee of the withdrawal) -> which of your accounts receives the money.
 // `target` is matched against account names. Edit this list when you add cards/accounts.
@@ -113,8 +123,43 @@ const money = (c) => (c / 100).toFixed(2);
     }
   }
 
+  // ---------- 3. notes enricher ----------
+  const notesDry = DRY || NOTES_MODE !== 'live';
+  let nEnriched = 0;
+  const parseRaw = (t) => { try { return t.raw_synced_data ? JSON.parse(t.raw_synced_data) : null; } catch { return null; } };
+  // "SQ *AUSTIN STREET PIZZA Forest Hills NY" -> "Forest Hills, NY". City = the Title-case words right before a
+  // trailing US state code (card networks put the merchant in CAPS and the city in Title case). No city -> no location
+  // (a bare state is often the merchant HQ for online purchases, which would be misleading).
+  const location = (desc) => {
+    const w = (desc || '').trim().split(/\s+/);
+    if (w.length < 3 || !US_STATES.has(w[w.length - 1])) return null;
+    const city = [];
+    for (let i = w.length - 2; i >= 0 && city.length < 3; i--) {
+      if (/^[A-Z][a-z]+\.?$/.test(w[i])) city.unshift(w[i]); else break;
+    }
+    return city.length ? `${city.join(' ')}, ${w[w.length - 1]}` : null;
+  };
+  const card = (name) => { const m = (name || '').match(/(\d{4})\)?\s*$/); return m ? `card ${m[1]}` : name; };
+  if (NOTES_MODE !== 'off') {
+    const samples = [];
+    for (const t of txs) {
+      const b = parseRaw(t);
+      if (!b || !b.transactionId || (t.notes || '').includes(NOTES_REF)) continue;
+      const ref = String(b.transactionId).replace(/^TRN-/, '').replace(/[^A-Za-z0-9]/g, '').slice(0, 8);
+      const parts = [location(b.notes), card(acctById[t.account]?.name),
+        b.postedDate && b.postedDate !== t.date ? `posted ${b.postedDate}` : null, `ref ${ref}`, `[receipt](${RECEIPTS_URL}/t/${t.id}.html)`].filter(Boolean);
+      const add = '| ' + parts.join(' | ');
+      const notes = `${t.notes ? t.notes + ' ' : ''}${add}`;
+      nEnriched++;
+      log({ step: 'notes', action: 'enriched', tx: view(t), added: add, undo: { id: t.id, notes: t.notes || null } });
+      if (notesDry && samples.length < 15) samples.push(`${t.date} ${money(t.amount).padStart(9)}  ${notes}`);
+      if (!notesDry) await api.updateTransaction(t.id, { notes });
+    }
+    if (notesDry && samples.length) console.log(`notes enricher DRY RUN, sample of ${nEnriched}:\n  ` + samples.join('\n  '));
+  }
+
   if (!DRY) await api.sync();
-  const summary = { transfers_linked: nLinked, transfers_ambiguous: nAmbiguous, transfers_waiting: nUnmatched, refunds_paired: nPaired, refunds_pending: nPending };
+  const summary = { transfers_linked: nLinked, transfers_ambiguous: nAmbiguous, transfers_waiting: nUnmatched, refunds_paired: nPaired, refunds_pending: nPending, notes_enriched: nEnriched, notes_mode: notesDry ? 'dry' : 'live' };
   log({ step: 'run', action: 'summary', ...summary });
   console.log(`daily-fixups: ${DRY ? 'DRY RUN, ' : ''}${JSON.stringify(summary)} | log: ${LOG}`);
   await api.shutdown();
