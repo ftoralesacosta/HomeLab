@@ -267,9 +267,10 @@ services:
       - /mnt/data/Downloads/:/downloads
       - /mnt/media/:/media
 
-  # Torrents: qbittorrent shares the gluetun network namespace, so all its
-  # traffic goes through ProtonVPN. WebUI 8080 has no host port: NPM and the
-  # *arrs reach it at vpn-gateway:8080. SERVER_CITIES must be a P2P city.
+  # P2P VPN: qbittorrent AND slskd share this gluetun network namespace, so all
+  # their traffic goes through ProtonVPN. No host ports: NPM and the *arrs reach
+  # the web UIs at vpn-gateway:8080 (qbittorrent) and vpn-gateway:5030 (slskd).
+  # SERVER_CITIES must be a P2P city.
   vpn:
     <<: *app
     image: ghcr.io/qdm12/gluetun:latest
@@ -282,11 +283,20 @@ services:
       - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
       - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESS}
       - FIREWALL_ALLOWED_PORTS=8080
+      # Let the web UIs in from proxy-net (8080 qbittorrent, 5030 slskd).
+      - FIREWALL_INPUT_PORTS=8080,5030
       - SERVER_CITIES=Amsterdam
-      # Proton NAT-PMP: forward one random port and tell qbittorrent to listen on it.
+      # Proton NAT-PMP: forward TWO ports. slskd adopts the first one itself (it
+      # polls the control server below); the up command gives qbittorrent the
+      # LAST one ({{PORTS}} is "p1,p2"). $$ is compose's escape for a literal $.
       - VPN_PORT_FORWARDING=on
-      - VPN_PORT_FORWARDING_UP_COMMAND=/bin/sh -c 'for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do if wget -q -O /dev/null --post-data "json={\"listen_port\":{{PORTS}},\"random_port\":false,\"upnp\":false,\"current_network_interface\":\"\",\"current_interface_address\":\"\"}" http://127.0.0.1:8080/api/v2/app/setPreferences 2>/dev/null; then echo "qbittorrent moved to port {{PORTS}} and unbound from lo"; exit 0; fi; sleep 1; done; echo "up-command gave up after 30s"; exit 1'
+      - VPN_PORT_FORWARDING_PORTS_COUNT=2
+      - VPN_PORT_FORWARDING_UP_COMMAND=/bin/sh -c 'P={{PORTS}}; Q=$${P##*,}; for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do if wget -q -O /dev/null --post-data "json={\"listen_port\":$$Q,\"random_port\":false,\"upnp\":false,\"current_network_interface\":\"\",\"current_interface_address\":\"\"}" http://127.0.0.1:8080/api/v2/app/setPreferences 2>/dev/null; then echo "qbittorrent moved to port $$Q (forwarded $$P) and unbound from lo"; exit 0; fi; sleep 1; done; echo "up-command gave up after 30s"; exit 1'
       - VPN_PORT_FORWARDING_DOWN_COMMAND=/bin/sh -c 'wget -O- -nv --retry-connrefused --post-data "json={\"listen_port\":0,\"current_network_interface\":\"lo\"}" http://127.0.0.1:8080/api/v2/app/setPreferences'
+      # Control server on loopback only, API-key protected: slskd shares this
+      # namespace and reads the forwarded port at 127.0.0.1:8000.
+      - HTTP_CONTROL_SERVER_ADDRESS=127.0.0.1:8000
+      - 'HTTP_CONTROL_SERVER_AUTH_DEFAULT_ROLE={"auth":"apikey","apikey":"${GLUETUN_CONTROL_API_KEY}"}'
       - TZ=America/New_York
     volumes:
       - ${DOCKERDIR}/gluetun:/gluetun
@@ -302,6 +312,53 @@ services:
     volumes:
       - ${DOCKERDIR}/qbittorrent/config:/config
       - /mnt/data/Downloads/:/downloads
+    depends_on:
+      vpn:
+        condition: service_healthy
+
+  # Soulseek: shares the `vpn` (vpn-gateway) namespace with qbittorrent, so all
+  # its traffic goes through ProtonVPN. WebUI 5030 has no host port: NPM reaches
+  # it at vpn-gateway:5030. The Soulseek listen port is adopted from gluetun's
+  # first forwarded port, so slskd stays connectable across reconnects. Runs as 1000 (Docker
+  # --user method) so downloads land as fernando; the config dir must exist and
+  # be owned by 1000 before first start.
+  slskd:
+    image: slskd/slskd:latest
+    container_name: slskd
+    restart: unless-stopped
+    network_mode: "service:vpn"
+    user: "1000:1000"
+    environment:
+      - TZ=America/New_York
+      - SLSKD_UMASK=022
+      - SLSKD_REMOTE_CONFIGURATION=true
+      # Let Lidarr (slskd plugin) delete completed downloads after import.
+      - SLSKD_REMOTE_FILE_MANAGEMENT=true
+      # Soulseek network account (auto-created on first login, see .env.example)
+      - SLSKD_SLSK_USERNAME=${SLSKD_SLSK_USERNAME}
+      - SLSKD_SLSK_PASSWORD=${SLSKD_SLSK_PASSWORD}
+      - SLSKD_SLSK_LISTEN_PORT=50300      # seed value; overwritten by the VPN integration
+      # Web UI, reached at vpn-gateway:5030
+      - SLSKD_HTTP_PORT=5030
+      # Authelia is the login (NPM --authelia gate); slskd's own auth is off,
+      # mirroring the *arrs' "External" auth.
+      - SLSKD_NO_AUTH=true
+      - SLSKD_API_KEY=${SLSKD_API_KEY}    # used by the Lidarr slskd plugin over proxy-net
+      # Download inside the tree Lidarr already mounts, in a subfolder so the
+      # importer never sees partial files.
+      - SLSKD_DOWNLOADS_DIR=/downloads/slskd
+      - SLSKD_INCOMPLETE_DIR=/downloads/slskd/incomplete
+      # Must share something: Soulseek blocks leechers.
+      - SLSKD_SHARED_DIR=/music
+      # Poll gluetun for VPN status + forwarded port, and adopt that port.
+      - SLSKD_VPN=true
+      - SLSKD_VPN_PORT_FORWARDING=true
+      - SLSKD_VPN_GLUETUN_URL=http://127.0.0.1:8000
+      - SLSKD_VPN_GLUETUN_API_KEY=${GLUETUN_CONTROL_API_KEY}
+    volumes:
+      - ${DOCKERDIR}/slskd/config:/app
+      - /mnt/data/Downloads/:/downloads
+      - /mnt/media/Music:/music:ro
     depends_on:
       vpn:
         condition: service_healthy

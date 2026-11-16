@@ -27,6 +27,17 @@ To run a job now: `docker exec actual-ai node /scripts/<script>.js`.
 To make `daily-fixups.js` only log and change nothing, set `FIXUPS_DRY_RUN: "true"` in the compose file.
 When you add a credit card or account, update the account list at the top of `daily-fixups.js`.
 
+`export-transactions.js` is **on demand, not a job**: it prints a readable JSON dump of every
+transaction with the fields the other scripts skip — `cleared`/`reconciled`, the bank's
+`imported_id`/`imported_payee`, the linked schedule/transfer, and the full SimpleFIN payload
+(`raw_synced_data`) parsed under `bank`. Optional date range and a `source` tag
+(`bank_sync` / `starting_balance` / `manual_or_import`):
+
+```sh
+docker exec actual-ai node /scripts/export-transactions.js > actual-transactions.json
+docker exec actual-ai node /scripts/export-transactions.js 2026-01-01 2026-12-31
+```
+
 ## Settings and reasons
 
 - `ACTUAL_UPLOAD_FILE_SYNC_SIZE_LIMIT_MB=100`: the default 20 MB is too small for a few years of history.
