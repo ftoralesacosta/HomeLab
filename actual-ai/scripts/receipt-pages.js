@@ -156,8 +156,7 @@ const page = (title, body) => `<!doctype html><html lang="en"><head><meta charse
     const body = `<div class="bar noprint"><a href="/">← All transactions</a><button onclick="print()">Print / Save as PDF</button></div>
 <div class="card"><h1>${esc(vendor)}</h1><p class="sub">Transaction record · ${esc(t.date)}</p>
 <div class="amt${t.amount > 0 ? ' in' : ''}">${money(t.amount, cur)}</div>
-<table class="kv">${kv.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table>${split}${attHtml}
-<p class="note">Generated ${new Date().toISOString().slice(0, 10)} from the card/bank transaction data stored in Actual Budget. This is a payment record, not an itemized merchant receipt.</p></div>`;
+<table class="kv">${kv.map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join('')}</table>${split}${attHtml}</div>`;
     fs.writeFileSync(path.join(OUT, 't', `${t.id}.html`), page(`${vendor} ${t.date} ${money(t.amount, cur)}`, body));
     keep.add(`${t.id}.html`);
     rows.push({ id: t.id, date: t.date, vendor, amount: money(t.amount, cur), acct: a.name || '', cat: subs ? 'Split' : (cats[t.category] || ''), att: att.length > 0 });

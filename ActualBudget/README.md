@@ -45,7 +45,7 @@ descriptor at the start is never changed, the transfer linker reads it):
 Location only appears when the bank text has a clear city (rare: Chase/Amazon/Apple never send one).
 Each change is logged in `daily-fixups.jsonl` with the old Notes (`undo`).
 
-**Receipt pages** (`receipt-pages.js`, daily 06:50, read-only on the budget): one printable page per
+**Receipt pages** (`receipt-pages.js`, read-only on the budget; rebuilt within ~1 min of any budget change by `actual-ai/receipt-watch.sh`, cron every minute, which only runs it when the sync server's `group-*.sqlite` mtime moves; `receipt-watch.sh --force` to rebuild now): one printable page per
 transaction (date, vendor, bank text, location, card, category, bank reference) plus a filterable
 index, written to `actual-ai/receipts/` (gitignored) and served by NPM at
 https://receipts.ftoralesacosta.me (Authelia, admin only; NPM host Advanced = `include /snippets/receipts.conf;`).
