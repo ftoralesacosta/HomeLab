@@ -101,7 +101,7 @@ gated apps need a second factor (TOTP or security key). Details: [authelia/READM
 | Bindery | Gate. Bindery takes the user name from the gate | admin, family |
 | Open WebUI | OIDC ("Continue with Authelia"); the account is created as a normal *user* | admin, family, friends |
 | Jellyfin | Its own login form; a plugin checks the password against Authelia | admin, family |
-| Kavita | OIDC with auto-login (Authelia client `kavita`, policy `media`). The first login creates the account with roles Login, Bookmark, Download and no libraries; give library access in Kavita. Authelia shows a consent screen on each fresh login, because Kavita always requests `offline_access` | admin, family |
+| Kavita | OIDC with auto-login (Authelia client `kavita`, policy `media`). The first login creates the account with roles Login, Bookmark, Download and access to the shared `Books` library (`/media/Books`, filled by Bindery). Reading progress is per user. Authelia shows a consent screen on each fresh login, because Kavita always requests `offline_access` | admin, family |
 | Actual | OIDC (Authelia client `actual-budget`, policy `admin_only`). `ACTUAL_USER_CREATION_MODE=login` creates the Actual user on the first login (role *basic*); share budget files with them in Actual | admin |
 
 A **gate** is one line in an NPM host's Advanced config: `include /snippets/authelia.conf;`
