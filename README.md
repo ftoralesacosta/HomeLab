@@ -94,13 +94,15 @@ gated apps need a second factor (TOTP or security key). Details: [authelia/READM
 | App | How it logs in | Who |
 |---|---|---|
 | Home Assistant | Gate (the companion app uses HA tokens on `/api/` and `/auth/token`) | admin |
-| SABnzbd, qBittorrent | Gate | admin |
-| *arr apps, Seerr | Gate. `/api` skips the gate for API-key clients | admin, family |
-| Bazarr | Gate, plus its own login | admin, family |
+| SABnzbd, qBittorrent | Gate. Their own logins are off: SABnzbd has no user name, qBittorrent skips its login for `proxy-net` (`WebUI\AuthSubnetWhitelist=172.23.0.0/16`) | admin |
+| *arr apps | Gate. `/api` skips the gate for API-key clients | admin, family |
+| Seerr | No gate. Its only login is the Jellyfin one (local login off, `main.localLogin: false`), and Jellyfin checks the password against Authelia, so it is the Authelia password | Anyone with Jellyfin access (admin, family) |
+| Bazarr | Gate. Its own login is off (`auth.type: null` in its `config.yaml`) | admin, family |
 | Bindery | Gate. Bindery takes the user name from the gate | admin, family |
 | Open WebUI | OIDC ("Continue with Authelia"); the account is created as a normal *user* | admin, family, friends |
 | Jellyfin | Its own login form; a plugin checks the password against Authelia | admin, family |
-| Kavita, Actual | Their own login | — |
+| Kavita | OIDC with auto-login (Authelia client `kavita`, policy `media`). The first login creates the account with roles Login, Bookmark, Download and no libraries; give library access in Kavita. Authelia shows a consent screen on each fresh login, because Kavita always requests `offline_access` | admin, family |
+| Actual | OIDC (Authelia client `actual-budget`, policy `admin_only`). `ACTUAL_USER_CREATION_MODE=login` creates the Actual user on the first login (role *basic*); share budget files with them in Actual | admin |
 
 A **gate** is one line in an NPM host's Advanced config: `include /snippets/authelia.conf;`
 ([snippet](nginx-proxy-manager/snippets/authelia.conf)).
@@ -113,6 +115,7 @@ Why:
 - **The download clients have no `/api` exception.** The *arr apps reach them inside Docker, so
   nothing outside needs their API.
 - **Jellyfin has no gate.** TV and phone apps cannot show a web login page.
+- **Seerr has no gate.** Its Jellyfin login already uses the Authelia password; a gate would add a second login page.
 - **Open WebUI does not link accounts by email.** Signup does not verify emails, so somebody could
   sign up with your address and take over your account.
 

@@ -69,6 +69,7 @@ adding their own device.
 | Bindery | Gate + user name from the gate | Auth mode `proxy`, set with `PUT /api/v1/auth/mode`. It reads the `Remote-User` header. The first admin's user name must be the same as in Authelia |
 | Open WebUI | OIDC client `open-webui` | Authorization policy `approved` (admin, family, friends with 2FA). `OAUTH_MERGE_ACCOUNTS_BY_EMAIL=false`, `DEFAULT_USER_ROLE=user` |
 | Jellyfin | Authelia-Auth plugin | The plugin's Authelia URL must be `https://auth.ftoralesacosta.me`. Its Jellyfin URL `https://jellyfin.ftoralesacosta.me/authz` must match the `^/authz$` rule. New users are created automatically, and the `admin` group gets Jellyfin admin. You must give new users library access once |
+| Kavita | OIDC client `kavita` | Authorization policy `media` (admin, family with 2FA). OIDC settings are in `appsettings.json` (Authority, ClientId, Secret, Enabled) and in Kavita: Settings → OpenID Connect (Provision accounts, Auto login, default roles). Auto login is on and the local password login stays on as a fallback (`/login?skipAutoLogin=true`). New users get no libraries. Kavita always requests `offline_access`, so Authelia always shows consent (implicit and remembered consent are not allowed with refresh tokens) |
 
 **Add an OIDC app:**
 1. Add a client under `identity_providers.oidc.clients` in `configuration.yml`

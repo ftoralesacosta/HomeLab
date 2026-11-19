@@ -372,6 +372,8 @@ services:
       ACTUAL_OPENID_CLIENT_SECRET: ${ACTUAL_OPENID_CLIENT_SECRET}
       # Hide the password option in the web UI (OpenID only).
       ACTUAL_OPENID_ENFORCE: "true"
+      # Create the Actual user on its first OpenID login (Authelia admin_only already vets who gets here).
+      ACTUAL_USER_CREATION_MODE: login
       # "password" stays allowed ONLY for the scripts (actual-ai, bank-sync, daily-fixups), which
       # reach actual-budget:5006 on the Docker network. NPM rejects non-OpenID logins from the
       # internet (Lua filter on /account/login in the budget. host). "header" is dropped.
