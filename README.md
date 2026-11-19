@@ -21,7 +21,7 @@ Each web app has its own subdomain, for example `sonarr.ftoralesacosta.me`.
 | Media | `jellyfin` (player). `sonarr`, `radarr`, `lidarr` (TV, movies, music), `prowlarr` + `flaresolverr` (indexers), `bazarr` (subtitles), `seerr` (family requests). `bindery` + `kavita` (books: download + read) |
 | Downloads | `sabnzbd` (usenet), `qbittorrent` (torrents, through the `vpn` container) |
 | Home | `homeassistant` (ha.) |
-| Other | `actual` + `actual-ai` (budget.), `mc` (Minecraft, port 25565), `website` (ftoralesacosta.me) |
+| Other | `actual` + `actual-ai` (budget.), `mc` (Minecraft, port 25565), `website` (ftoralesacosta.me), `kiwix` (wiki., offline Wikipedia, see [kiwix/README.md](kiwix/README.md)) |
 
 ## Daily operations
 

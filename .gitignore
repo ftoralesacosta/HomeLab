@@ -12,3 +12,4 @@ backup/logs/
 backups/
 signup/smtp.env
 __pycache__/
+kiwix/logs/

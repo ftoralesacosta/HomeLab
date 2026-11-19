@@ -54,8 +54,9 @@ services:
     security_opt: [no-new-privileges:true]
     environment:
       CLOUDFLARE_API_TOKEN: ${Cloudflare_API_KEY}
-      DOMAINS: ${DOMAIN_NAME},mc.${DOMAIN_NAME}
-      PROXIED: "false"
+      DOMAINS: ${DOMAIN_NAME},mc.${DOMAIN_NAME},wiki.${DOMAIN_NAME}
+      # Root and mc. stay DNS-only (Minecraft is not HTTP); wiki. goes through the Cloudflare proxy.
+      PROXIED: "is(wiki.${DOMAIN_NAME})"
       IP6_PROVIDER: none
       <<: *tz
 
@@ -452,6 +453,22 @@ services:
       - "192.168.4.51:8888:8080"   # LAN browser access (wlp130s0)
     volumes:
       - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+
+  # --- Offline Wikipedia (Kiwix): https://wiki.ftoralesacosta.me (Authelia gate) ---------
+  # ZIM files live on the NVMe (/mnt/data/kiwix, random reads; not backed up, they can be
+  # downloaded again). kiwix/update.sh fetches new versions monthly (cron, 2nd of the month)
+  # and updates library.xml; --monitorLibrary picks that up without a restart.
+  kiwix:
+    <<: *app
+    image: ghcr.io/kiwix/kiwix-serve:3.8.2
+    container_name: kiwix
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: ["--library", "/data/library.xml", "--monitorLibrary"]
+    volumes:
+      - /mnt/data/kiwix:/data:ro
 
   # --- AI -------------------------------------------------------------------------------
   # Open WebUI. Data volume is the pre-existing "open-webui_open-webui".

@@ -65,6 +65,13 @@ access_control:
   rules:
     - domain: "auth.ftoralesacosta.me"
       policy: one_factor
+    # Kiwix (offline Wikipedia): password only, friends included.
+    - domain: "wiki.ftoralesacosta.me"
+      policy: one_factor
+      subject:
+        - "group:admin"
+        - "group:family"
+        - "group:friends"
     # *arr stack (prowlarr/lidarr/sonarr/radarr): apps run External auth behind the
     # gate, so /api (and Prowlarr's /<n>/api sync paths) stay open for API-key
     # clients; everything else needs a login. /initialize.json stays gated.
