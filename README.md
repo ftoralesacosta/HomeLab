@@ -21,9 +21,9 @@ Each web app has its own subdomain, for example `sonarr.ftoralesacosta.me`.
 
 | Area | Services |
 |---|---|
-| Edge | `reverse-proxy`: Nginx Proxy Manager (NPM) on 80/443, admin UI on port 81 (LAN only). `cloudflare-ddns`: keeps `ftoralesacosta.me`, `mc.` and `wiki.` on the home IP |
+| Edge | `reverse-proxy`: Nginx Proxy Manager (NPM) on 80/443, admin UI on port 81 (LAN only). `cloudflare-ddns`: keeps `ftoralesacosta.me`, `mc.`, `wiki.` and `research.` on the home IP |
 | Login | `authelia` (auth.): single sign-on and 2FA. `signup` (signup.): public form to request an account |
-| AI | `open-webui` (webui.), `searxng` (web search, LAN only). Hermes agent: systemd service `hermes-gateway`, not Docker, API on 127.0.0.1:8642 |
+| AI | `open-webui` (webui.), `searxng` (web search, LAN only), `local-deep-research` (research., cited research reports, see [local-deep-research/README.md](local-deep-research/README.md)). Hermes agent: systemd service `hermes-gateway`, not Docker, API on 127.0.0.1:8642 |
 | Media | `jellyfin` (player). `sonarr`, `radarr`, `lidarr` (TV, movies, music), `prowlarr` + `flaresolverr` (indexers), `bazarr` (subtitles), `seerr` (family requests) |
 | Books | `bindery` (finds and downloads books), `kavita` (reader; shared `Books` library, progress per user) |
 | Downloads | `sabnzbd` (Usenet). `qbittorrent` and `slskd` (Soulseek), both inside the `vpn` container (gluetun, ProtonVPN) |
@@ -114,7 +114,8 @@ These live in each app's database, not in this repo. Change them in the app's UI
 | App | Schedule |
 |---|---|
 | `actual-ai` | Categorizes daily at 06:00 (`CLASSIFICATION_SCHEDULE_CRON` in compose) |
-| `cloudflare-ddns` | Checks the public IP every 5 min and updates `@`, `mc.` and `wiki.` |
+| `cloudflare-ddns` | Checks the public IP every 5 min and updates `@`, `mc.`, `wiki.` and `research.` |
+| Local Deep Research | Cleanup of inactive sessions every 5 min; its news scheduler (only runs subscriptions you create) |
 | Seerr | Jellyfin recently added: every 5 min · full scan 03:00 · Radarr 04:00 · Sonarr 04:30 · availability 05:00 · download sync every minute |
 | Bindery | Metadata refresh hourly, library scan, search for wanted books (13 jobs) |
 | Kavita | Library scan, backup and cleanup tasks, daily (Settings → Tasks) |
@@ -184,6 +185,7 @@ login. Gated apps need a second factor (TOTP or security key). Details: [autheli
 | Home Assistant | Gate, then HA's own login (HA cannot trust a proxy login). The companion app uses HA tokens on `/api/` and `/auth/token` | admin |
 | SABnzbd, qBittorrent, slskd | Gate. Their own logins are off: SABnzbd has no user name, qBittorrent skips its login for `proxy-net` (`WebUI\AuthSubnetWhitelist=172.23.0.0/16`), slskd auth is off | admin |
 | receipts. | Gate | admin |
+| Local Deep Research (research.) | Gate, then LDR's own login (one account per person, encrypted) | admin |
 | *arr apps | Gate. `/api` skips the gate for API-key clients | admin, family |
 | Bazarr | Gate. Its own login is off (`auth.type: null` in its `config.yaml`) | admin, family |
 | Bindery | Gate. Bindery takes the user name from the gate | admin, family |
@@ -256,7 +258,7 @@ Prowlarr holds the indexers and syncs them to the *arr apps; Bindery pulls them 
 | Router | Banana Pi BPI-R4, OpenWrt 25.12, 192.168.4.1. Away: `ssh -L 8443:192.168.4.1:443 fernando@ftoralesacosta.me`, then https://localhost:8443 |
 | Server | 192.168.4.51 (DHCP reservation) on Wi-Fi `wlp130s0`. The wired ports (`enp129s0`, `eno0`) are not cabled yet; [server/setup-wired.sh](server/setup-wired.sh) makes the cable primary and keeps Wi-Fi as backup |
 | Port forwards | TCP 22 (SSH), 80 + 443 (NPM), 25565 (Minecraft) |
-| DNS | Subdomains go through the Cloudflare proxy. `ftoralesacosta.me` and `mc.` are DNS-only, because Minecraft is not HTTP. `cloudflare-ddns` keeps `@`, `mc.` and `wiki.` current |
+| DNS | Subdomains go through the Cloudflare proxy. `ftoralesacosta.me` and `mc.` are DNS-only, because Minecraft is not HTTP. `cloudflare-ddns` keeps `@`, `mc.`, `wiki.` and `research.` current |
 | Jellyfin at home | The router's DNS sends `jellyfin.ftoralesacosta.me` to 192.168.4.51, so media stays on the LAN |
 | Disks | `/` 256 GB NVMe (OS) · `/mnt/data` 2 TB NVMe (downloads, backups, Kiwix) · `/mnt/media` 14 TB HDD (media library) |
 
@@ -269,5 +271,6 @@ Debian security updates install automatically, without reboots. Other updates ar
 - [backup/README.md](backup/README.md): nightly backup to the second NVMe and Google Drive, and restore
 - [ActualBudget/README.md](ActualBudget/README.md): budget jobs, receipt pages, scripts
 - [kiwix/README.md](kiwix/README.md): offline Wikipedia, content and updates
+- [local-deep-research/README.md](local-deep-research/README.md): research reports, settings, roadmap (Open WebUI, MCP)
 - [HomeAssistant/README.md](HomeAssistant/README.md): config files, debug logging
 - [OpenWRT-BPI_R4/README.md](OpenWRT-BPI_R4/README.md): router, fiber stick, recovery

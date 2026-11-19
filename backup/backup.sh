@@ -75,6 +75,7 @@ do_stage() {
   stage home-assistant homeassistant   "$V/home-assistant"
   stage authelia       authelia        "$V/authelia"
   stage open-webui     open-webui      /var/lib/docker/volumes/open-webui_open-webui/_data  ./cache
+  stage local-deep-research local-deep-research "$V/local-deep-research" ./data/cache ./data/logs
   stage hermes         ""              /var/lib/hermes/.hermes ./tools ./cache ./logs ./audio_cache ./image_cache
   # Minecraft: not paused (players would time out); flush the world to disk and stop autosave while copying.
   # Excludes are rebuildable (server jars/libraries) or junk (JVM core dumps, crash reports, old tarballs).
