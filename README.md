@@ -124,6 +124,10 @@ If Authelia is down: Open WebUI has a password login at `/auth?form=1`, and
 
 ## Downloads
 
+Bindery (books) gets its indexers from Prowlarr (synced, `Settings → Prowlarr`) and sends downloads to
+SABnzbd and qBittorrent with category `books` (qBittorrent saves to `/downloads/books`). Its root folders are
+`/media/Books` (served by Kavita) and `/media/Audiobooks`.
+
 SABnzbd connects directly. qBittorrent shares the network of the `vpn` container (gluetun,
 ProtonVPN WireGuard), so all torrent traffic goes through the VPN.
 
