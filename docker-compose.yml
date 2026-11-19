@@ -467,11 +467,11 @@ services:
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     # --nodatealiases: stable URLs without the date (/content/wikipedia_en_all_maxi/...), so links
-    # survive updates. --customIndex: kiwix/index.html opens Wikipedia's landing page instead of the library.
+    # survive updates. --customIndex: our own start page (kiwix/landing/, built by build.py) instead of the library.
     command: ["--library", "/data/library.xml", "--monitorLibrary", "--nodatealiases", "--customIndex", "/srv/index.html"]
     volumes:
       - /mnt/data/kiwix:/data:ro
-      - ./kiwix/index.html:/srv/index.html:ro
+      - ./kiwix/landing:/srv:ro                # a folder, so rebuilt files are seen (kiwix reads it at start)
 
   # --- AI -------------------------------------------------------------------------------
   # Open WebUI. Data volume is the pre-existing "open-webui_open-webui".

@@ -11,14 +11,27 @@ with `kiwix-serve`. Search works offline: the full-text index is inside each ZIM
 | DNS | `wiki.` A record kept by `cloudflare-ddns` (proxied) |
 | Updates | `kiwix/update.sh`, monthly from fernando's crontab (2nd, 04:15). Log: `kiwix/logs/cron.log` |
 
-## Landing page and stable links
+## Start page and stable links
 
-Opening https://wiki.ftoralesacosta.me goes straight to Wikipedia's landing page
-(`/viewer#wikipedia_en_all_maxi/User:The_other_Kiwix_guy/Landing`) instead of the library list:
-[index.html](index.html) is served as the welcome page (`--customIndex`). `--nodatealiases` makes
-date-free URLs (`wikipedia_en_all_maxi` instead of `wikipedia_en_all_maxi_2026-08`), so bookmarks and
-this redirect keep working after monthly updates. To get the library list back (e.g. with more ZIMs),
-remove `--customIndex` from the compose command.
+https://wiki.ftoralesacosta.me opens our own start page instead of Kiwix's library list: a search
+box with suggestions (Enter = full-text search) and 24 topic tiles that open Wikipedia's portals,
+plus *Main page* and *Random article*. It is plain HTML/CSS/JS in [landing/](landing/):
+
+| File | Role |
+|---|---|
+| `landing/template.html` | Layout and styles (light and dark mode). Edit this for design changes |
+| `landing/build.py` | The tile list (title, caption, portal, image). Fills the template, writes `index.html` |
+| `landing/index.html` | Generated, served by `kiwix-serve --customIndex`. Do not edit by hand |
+
+```bash
+python3 ~/HomeLab/kiwix/landing/build.py && docker restart kiwix   # after editing the tiles or the template
+```
+
+The tile pictures are lead images of Wikipedia articles, taken from the ZIM and embedded in
+`index.html` (~0.5 MB), so the page needs nothing from the internet and survives ZIM updates.
+`update.sh` rebuilds it after each new edition. `--nodatealiases` gives date-free URLs
+(`wikipedia_en_all_maxi/...`), so the tiles and bookmarks keep working after updates. To get
+Kiwix's library list back (e.g. with several ZIMs), remove `--customIndex` from the compose command.
 
 ## Why the NVMe
 

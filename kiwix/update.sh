@@ -61,6 +61,7 @@ for entry in "${BOOKS[@]}"; do
   [ -f "$DIR/library.xml" ] || echo '<library version="20110515"></library>' > "$DIR/library.xml"
   manage add "/data/$latest"
   log "$book: added $latest to the library"
+  UPDATED=1
 
   # Drop older versions of the same book from the library, then from disk.
   for old in "$DIR/${book}"_*.zim; do
@@ -70,4 +71,9 @@ for entry in "${BOOKS[@]}"; do
     rm -f "$old"; log "$book: removed old $(basename "$old")"
   done
 done
+# New edition: rebuild the start page (edition date, tile images) and restart kiwix to load it.
+if [ "${UPDATED:-0}" = 1 ]; then
+  python3 "$(dirname "$(readlink -f "$0")")/landing/build.py" && docker restart kiwix >/dev/null \
+    && log "start page rebuilt" || log "WARN start page rebuild failed (Wikipedia itself is updated)"
+fi
 log "done"
