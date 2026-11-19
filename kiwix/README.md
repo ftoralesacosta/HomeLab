@@ -11,6 +11,15 @@ with `kiwix-serve`. Search works offline: the full-text index is inside each ZIM
 | DNS | `wiki.` A record kept by `cloudflare-ddns` (proxied) |
 | Updates | `kiwix/update.sh`, monthly from fernando's crontab (2nd, 04:15). Log: `kiwix/logs/cron.log` |
 
+## Landing page and stable links
+
+Opening https://wiki.ftoralesacosta.me goes straight to Wikipedia's landing page
+(`/viewer#wikipedia_en_all_maxi/User:The_other_Kiwix_guy/Landing`) instead of the library list:
+[index.html](index.html) is served as the welcome page (`--customIndex`). `--nodatealiases` makes
+date-free URLs (`wikipedia_en_all_maxi` instead of `wikipedia_en_all_maxi_2026-08`), so bookmarks and
+this redirect keep working after monthly updates. To get the library list back (e.g. with more ZIMs),
+remove `--customIndex` from the compose command.
+
 ## Why the NVMe
 
 Kiwix does many small random reads (articles, images, the search index). The NVMe answers in
