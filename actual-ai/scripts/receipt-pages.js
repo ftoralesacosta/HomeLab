@@ -6,7 +6,7 @@
 //   /receipts/files/<transaction id>[-anything].(jpg|jpeg|png|webp|gif|heic|pdf)   receipts: uploaded with the
 //                                  page's "Attach receipt" button (nginx WebDAV PUT, see snippets/receipts.conf)
 //                                  or dropped here by hand. Pages list them live, no rebuild needed.
-// Run daily at 06:50 (fernando's crontab, after daily-fixups.js); safe to run any time:
+// Run by ../receipt-watch.sh (cron, every minute) only when the budget changed; safe to run any time:
 //   docker exec actual-ai node /scripts/receipt-pages.js
 const api = require('/opt/node_app/node_modules/@actual-app/api');
 const fs = require('fs');

@@ -225,11 +225,14 @@ sudo bash ~/HomeLab/systemd/install-hermes-env.sh  # hermes-env.service + hermes
 ```
 `hermes-gateway.service` itself is **not** in this repo — it ships with the Hermes install. Reinstall Hermes first, then run `install-hermes-env.sh` so the drop-in applies.
 
-**10. Re-add the cron jobs** (`crontab -e`):
+**10. Re-add the cron jobs** (`crontab -e`). The list and what each job does: main README,
+[Scheduled and background tasks](../README.md#scheduled-and-background-tasks).
 ```
+* * * * * /home/fernando/HomeLab/actual-ai/receipt-watch.sh
 30 3 * * * /home/fernando/HomeLab/backup/backup.sh >> /home/fernando/HomeLab/backup/logs/cron.log 2>&1
 45 5 * * * timeout 900 docker exec actual-ai node /scripts/bank-sync.js >> /home/fernando/HomeLab/actual-ai/logs/cron.log 2>&1
 45 6 * * * docker exec actual-ai node /scripts/daily-fixups.js >> /home/fernando/HomeLab/actual-ai/logs/cron.log 2>&1
+15 4 2 * * /home/fernando/HomeLab/kiwix/update.sh >> /home/fernando/HomeLab/kiwix/logs/cron.log 2>&1
 ```
 
 **11. Re-download the media** — do **steps A4–A5** above (Sonarr/Radarr *Update All* → *Wanted → Missing → Search All*).

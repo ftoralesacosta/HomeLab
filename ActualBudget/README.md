@@ -102,7 +102,7 @@ Actual changes the token into a long-lived key and keeps it in `server-files/`.
 
 1. Restore `${DOCKERDIR}/actual-budget/data` from the backup (see [backup/README.md](../backup/README.md)).
 2. `docker compose up -d actual actual-ai`.
-3. Add the cron jobs (the list is in the backup README, section B).
+3. Add the cron jobs (main README, [Scheduled and background tasks](../README.md#scheduled-and-background-tasks)).
 4. If you did not restore the data, set a new server password and link SimpleFIN again.
 
 The NPM host `budget.` points to `actual-budget:5006`. DNS is a proxied Cloudflare CNAME
