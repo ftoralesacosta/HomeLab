@@ -1,7 +1,7 @@
 """
 title: Deep Research
 author: homelab (HomeLab/open-webui/functions)
-version: 3.1.0
+version: 3.2.0
 required_open_webui_version: 0.6.0
 description: The Deep Research flow behind the Deep Research toggle. Send a topic and it replies with a research plan; reply "approve" (or "approve medical" for PubMed) to run it in Local Deep Research with a live task checklist, then get a cited report plus PDF and Markdown downloads.
 """
@@ -277,8 +277,7 @@ class Pipe:
         if files:
             links = " · ".join(f"[{'📄 PDF' if f['name'].endswith('.pdf') else '📝 Markdown'}](/api/v1/files/{f['id']}/content)" for f in files)
             downloads = f"\n\n**Download this report:** {links}"
-        return (f"{REPORT_HEADING}\n\n{report}{downloads}\n\n"
-                f"<sub>Local Deep Research · {label} · {v.RESEARCH_MODEL} · {v.MODE} · {mins}m{secs:02d}s · id {rid}</sub>")
+        return f"{REPORT_HEADING}\n\n{report}{downloads}"
 
     async def _follow_logs(self, s, base: str, rid: str, last_id: int, steps) -> int:
         """Turn new LDR milestones into checklist progress and search-query chips."""
