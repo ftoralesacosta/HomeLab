@@ -18,6 +18,8 @@ Two steps, so you approve the plan before any searching (and token spending) sta
    above the message; the cited report is appended to the same message (about 5 minutes in
    *quick* mode). It runs in the background, so you can leave the chat; the report is saved to the
    chat when it finishes.
+   The report is added as its own part of the answer (Open WebUI 0.11 draws answers from their
+   structured output parts, so text appended any other way would be saved but not shown).
 
 | File | Function id | Type |
 |---|---|---|

@@ -1,7 +1,7 @@
 """
 title: Approve & Run Deep Research
 author: homelab (HomeLab/open-webui/functions)
-version: 1.1.0
+version: 1.2.0
 required_open_webui_version: 0.6.0
 description: Sends the research plan in this message (including your edits) to Local Deep Research, shows live progress, and appends the cited report to the message.
 icon_url: data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='7'/><path d='m20 20-3.5-3.5'/><path d='m8.5 11 2 2 4-4'/></svg>
@@ -60,7 +60,7 @@ class Action:
         await status("Deep research: starting…")
         # Run in the background: the button's HTTP request would otherwise sit open for minutes
         # (and Cloudflare cuts requests after 100 s). Progress and the report arrive over the socket.
-        task = asyncio.create_task(self._run(plan, emit, status))
+        task = asyncio.create_task(self._run(plan, emit, status, body))
         _TASKS.add(task)
         task.add_done_callback(_TASKS.discard)
 
@@ -82,7 +82,7 @@ class Action:
             content = "## Research plan" + content.rsplit("## Research plan", 1)[1]
         return FOOTER_RE.sub("", content).strip()
 
-    async def _run(self, plan: str, emit, status):
+    async def _run(self, plan: str, emit, status, body: dict):
         v = self.valves
         base = v.LDR_BASE_URL.rstrip("/")
         query = ("Carry out deep research following this approved research plan. Answer the research question, "
@@ -132,12 +132,39 @@ class Action:
                     raise RuntimeError("LDR finished but returned an empty report")
 
             mins, secs = divmod(int(time.time() - t0), 60)
-            await emit({"type": "message", "data": {"content":
-                f"{REPORT_MARKER}\n\n{report.strip()}\n\n"
-                f"<sub>Local Deep Research · {v.MODEL} · {v.MODE} · {mins}m{secs:02d}s · id {rid}</sub>\n"}})
+            text = (f"{REPORT_MARKER}\n\n{report.strip()}\n\n"
+                    f"<sub>Local Deep Research · {v.MODEL} · {v.MODE} · {mins}m{secs:02d}s · id {rid}</sub>\n")
             await status(f"Deep research complete ({mins}m{secs:02d}s)", True)
+            await self._publish(body, emit, text, rid)
         except Exception as e:  # report every failure in the chat instead of failing silently
             await status(f"Deep research failed: {str(e)[:200]}", True)
+
+    @staticmethod
+    async def _publish(body: dict, emit, text: str, rid: str):
+        """Attach the report to the message.
+
+        Open WebUI 0.11 draws assistant messages from their structured `output` items when they
+        have them (reasoning + message parts); text appended to `content` alone is saved but not
+        shown. So add the report as an output item, save it, and send the browser a normal
+        completion update. Messages without output items get a plain text append."""
+        chat_id, msg_id = body.get("chat_id"), body.get("id")
+        output = None
+        try:
+            from open_webui.models.chats import Chats
+            from open_webui.utils.misc import get_output_text
+            msg = await Chats.get_message_by_id_and_message_id(chat_id, msg_id) if chat_id and msg_id else None
+            output = (msg or {}).get("output")
+            if isinstance(output, list) and output:
+                output = [o for o in output if not str(o.get("id", "")).startswith("msg_ldr_")]  # re-run: replace
+                output.append({"type": "message", "id": f"msg_ldr_{rid}", "status": "completed", "role": "assistant",
+                               "content": [{"type": "output_text", "text": text}]})
+                await Chats.upsert_message_to_chat_by_id_and_message_id(
+                    chat_id, msg_id, {"output": output, "content": get_output_text(output)})
+                await emit({"type": "chat:completion", "data": {"output": output, "done": True}})
+                return
+        except Exception:
+            output = None
+        await emit({"type": "message", "data": {"content": text}})
 
     async def _login(self, s: aiohttp.ClientSession, base: str) -> str:
         async with s.get(f"{base}/auth/login") as r:
