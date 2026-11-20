@@ -23,7 +23,7 @@ Each web app has its own subdomain, for example `sonarr.ftoralesacosta.me`.
 |---|---|
 | Edge | `reverse-proxy`: Nginx Proxy Manager (NPM) on 80/443, admin UI on port 81 (LAN only). `cloudflare-ddns`: keeps `ftoralesacosta.me`, `mc.` and `wiki.` on the home IP |
 | Login | `authelia` (auth.): single sign-on and 2FA. `signup` (signup.): public form to request an account |
-| AI | `open-webui` (webui.), `searxng` (web search, LAN only), `local-deep-research` (cited research reports, used from Open WebUI's *Deep Research* toggle and *Approve & Run* button; not exposed; see [local-deep-research/README.md](local-deep-research/README.md)). Hermes agent: systemd service `hermes-gateway`, not Docker, API on 127.0.0.1:8642 |
+| AI | `open-webui` (webui.), `searxng` (web search, LAN only), `local-deep-research` (cited research reports, used from the *Deep Research* model in Open WebUI; not exposed; see [local-deep-research/README.md](local-deep-research/README.md)). Hermes agent: systemd service `hermes-gateway`, not Docker, API on 127.0.0.1:8642 |
 | Media | `jellyfin` (player). `sonarr`, `radarr`, `lidarr` (TV, movies, music), `prowlarr` + `flaresolverr` (indexers), `bazarr` (subtitles), `seerr` (family requests) |
 | Books | `bindery` (finds and downloads books), `kavita` (reader; shared `Books` library, progress per user) |
 | Downloads | `sabnzbd` (Usenet). `qbittorrent` and `slskd` (Soulseek), both inside the `vpn` container (gluetun, ProtonVPN) |
@@ -191,7 +191,7 @@ login. Gated apps need a second factor (TOTP or security key). Details: [autheli
 | Kiwix (wiki.) | Gate, password only (`one_factor`) | admin, family, friends |
 | Seerr | No gate. Its only login is the Jellyfin one (local login off, `main.localLogin: false`), and Jellyfin checks the password against Authelia, so it is the Authelia password | Anyone with Jellyfin access (admin, family) |
 | Jellyfin | No gate. Its own login form; a plugin checks the password against Authelia | admin, family |
-| Open WebUI | OIDC ("Continue with Authelia"); the account is created as a normal *user*. Its *Approve & Run Deep Research* button (admins) uses Local Deep Research with a service account, so LDR needs no login of its own | admin, family, friends |
+| Open WebUI | OIDC ("Continue with Authelia"); the account is created as a normal *user*. Its *Deep Research* model (admins) uses Local Deep Research with a service account, so LDR needs no login of its own | admin, family, friends |
 | Kavita | OIDC with auto-login (client `kavita`, policy `media`). The first login creates the account with roles Login, Bookmark, Download and the shared `Books` library. Authelia shows a consent screen on each fresh login, because Kavita always requests `offline_access` | admin, family |
 | Actual | OIDC (client `actual-budget`, policy `admin_only`). `ACTUAL_USER_CREATION_MODE=login` creates the Actual user on the first login (role *basic*); share budget files with them in Actual | admin |
 
@@ -220,7 +220,7 @@ variable. A container gets only the variables in its own `environment:` block.
 
 Other secret files, also only on the server: `authelia/configuration.yml`,
 `authelia/users/auth_file.yml`, `signup/smtp.env`, and Kavita's `appsettings.json` (OIDC secret).
-Open WebUI's database holds a copy of `DEEP_RESEARCH_PASSWORD` in the Deep Research action's valves.
+Open WebUI's database holds a copy of `DEEP_RESEARCH_PASSWORD` in the Deep Research function's valves.
 
 Hermes cannot read `.env`. Before Hermes starts, `hermes-env.service` copies its two keys into the
 root-only file `/run/hermes-gateway.env` (install: `sudo bash systemd/install-hermes-env.sh`). The
@@ -272,6 +272,6 @@ Debian security updates install automatically, without reboots. Other updates ar
 - [ActualBudget/README.md](ActualBudget/README.md): budget jobs, receipt pages, scripts
 - [kiwix/README.md](kiwix/README.md): offline Wikipedia, content and updates
 - [local-deep-research/README.md](local-deep-research/README.md): research engine, service account, model choice
-- [open-webui/functions/README.md](open-webui/functions/README.md): Deep Research toggle and Approve button (Open WebUI functions), valves
+- [open-webui/functions/README.md](open-webui/functions/README.md): the Deep Research model (Open WebUI function), valves
 - [HomeAssistant/README.md](HomeAssistant/README.md): config files, debug logging
 - [OpenWRT-BPI_R4/README.md](OpenWRT-BPI_R4/README.md): router, fiber stick, recovery

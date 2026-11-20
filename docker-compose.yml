@@ -475,7 +475,7 @@ services:
 
   # --- AI -------------------------------------------------------------------------------
   # Local Deep Research (LDR): multi-step research with cited reports.
-  # Not exposed: Open WebUI is the front door (Authelia OIDC); its Deep Research Action logs in to LDR
+  # Not exposed: Open WebUI is the front door (Authelia OIDC); its Deep Research model logs in to LDR
   # with the service account DEEP_RESEARCH_USER/PASSWORD (.env). Admin UI: ssh -L 5000:127.0.0.1:5000.
   # Searches through our SearXNG; the LLM is W&B Inference (same endpoint as Open WebUI/Hermes).
   # 127.0.0.1:5000 only: Open WebUI runs on the host network.
@@ -494,7 +494,7 @@ services:
       LDR_SEARCH_TOOL: searxng
       LDR_SEARCH_ENGINE_WEB_SEARXNG_DEFAULT_PARAMS_INSTANCE_URL: http://searxng:8080
       LDR_SERVER_FORWARDED_ALLOW_IPS: 172.23.0.0/16   # trust X-Forwarded-For from NPM on proxy-net
-      # Default is 5 logins / 15 min per IP; every Approve click logs in, all from the Docker gateway IP.
+      # Default is 5 logins / 15 min per IP; every research run logs in, all from the Docker gateway IP.
       # LDR is localhost-only and the service account password is long and random.
       LDR_SECURITY_RATE_LIMIT_LOGIN: "120 per hour"
       # Closed: the only account is the service account (DEEP_RESEARCH_USER in .env). To add one: "true", up -d, register, back to "false".

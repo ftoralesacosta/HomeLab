@@ -2,8 +2,8 @@
 
 [Local Deep Research](https://github.com/LearningCircuit/local-deep-research) breaks a question into
 sub-questions, searches through our SearXNG over several rounds, reads the sources, and writes a cited
-Markdown report. **Open WebUI is the front door**: you run it from the chat (Deep Research toggle →
-plan → *Approve & Run Deep Research*), see [../open-webui/functions/README.md](../open-webui/functions/README.md).
+Markdown report. **Open WebUI is the front door**: you run it from the chat (pick the **Deep Research** model →
+plan → reply *approve*), see [../open-webui/functions/README.md](../open-webui/functions/README.md).
 
 | Item | Value |
 |---|---|
@@ -19,7 +19,7 @@ plan → *Approve & Run Deep Research*), see [../open-webui/functions/README.md]
 LDR encrypts each account's database with a key derived from that account's password. A login done
 by Authelia (OIDC or a trusted header) never gives LDR the password, so it could not open the
 database; LDR 2.0.1 has no SSO. Instead nobody logs in to LDR directly: Open WebUI (Authelia OIDC)
-is the only way in, and its action uses the service account.
+is the only way in, and its Deep Research model uses the service account.
 
 ## Admin access to LDR's own UI
 
@@ -38,7 +38,7 @@ if it is lost, the account's history is lost too (create a new account, update `
 `LDR_<SETTING>` variables in `docker-compose.yml` set a setting **and lock it** in LDR's UI (setting key
 in capitals, dots → `_`, e.g. `search.tool` → `LDR_SEARCH_TOOL`). Locked: LLM provider
 (`openai_endpoint`), endpoint URL and key, search engine (`searxng`) and its URL, registration (off).
-The Open WebUI action sends model, mode, iterations and questions per run.
+The Open WebUI function sends model, mode, iterations and questions per run.
 
 **Use a non-reasoning model.** Reasoning models (DeepSeek-V4.x, Kimi, GLM-5.3, MiniMax) often
 return empty answers to LDR's short prompts because the whole token budget goes to hidden reasoning.
@@ -57,5 +57,5 @@ local-deep-research/ldr.sh terminate                                     # stop 
 ## Roadmap
 
 1. **Done:** LDR deployed and tested end to end.
-2. **Done:** Open WebUI toggle (plan) + *Approve & Run Deep Research* action.
+2. **Done:** Open WebUI *Deep Research* model (plan, reply "approve", cited report).
 3. MCP: LDR's MCP server (`python -m local_deep_research.mcp`) for opencode and Hermes, using the same service account.
