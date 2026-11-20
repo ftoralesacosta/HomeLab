@@ -22,6 +22,8 @@ the plan before any searching (and token spending) starts:
 2. **Approve, revise or drop it.**
    - Reply **approve** (or *yes*, *go ahead*, *ok*, *run it*…) to run it. Add notes after it if you
      like: *"approve, focus on a $20k/yr spender"*. Notes are appended to the plan.
+   - The plan ends with a short, friendly menu of these choices (built into the function, so it looks
+     the same whatever model wrote the plan).
    - **Pick the sources** with a word in the approval:
 
      | You write | Searched (LDR engine) |
@@ -36,10 +38,15 @@ the plan before any searching (and token spending) starts:
    - You can also edit the plan message (pencil icon) before approving: the approved plan is the
      last plan message as it is now.
    - Not interested? Just stop; nothing runs until you approve.
-3. **Research.** The plan goes to Local Deep Research (`127.0.0.1:5000`), which searches through
-   our SearXNG over several rounds. Progress shows live above the answer (percentage, time, current
-   step); the cited report arrives as the answer (a few minutes in *quick* mode). The stop button
-   also stops the job in LDR.
+3. **Research.** The plan goes to Local Deep Research (`127.0.0.1:5000`). While it runs you see:
+   - a **task checklist** (Open WebUI's `chat:message:tasks`) that ticks off: read the plan → search
+     (questions investigated, searches) → read the sources (how many found) → write the report → prepare downloads;
+   - status lines with the **search questions as chips**, and at the end the **list of sources used**.
+
+   The cited report arrives as the answer (a few minutes in *quick* mode), with **PDF** and
+   **Markdown** downloads attached to the message and linked under the report. The PDF comes from
+   LDR's own exporter; both files are stored in Open WebUI's file storage. The stop button also
+   stops the job in LDR.
 
 Why the research runs as a model (the toggle just routes to it) and not as a button under the message: Open WebUI 0.11 runs action buttons outside the chat request, so their
 live updates and late results were unreliable. A model runs inside the normal chat request (like web
@@ -63,6 +70,7 @@ search), so progress and the answer behave like any other reply.
 | `MODE` | `quick` | `quick` = cited summary; `detailed` = long multi-section report |
 | `ITERATIONS` / `QUESTIONS_PER_ITERATION` | `2` / `3` | Search depth vs. time and tokens |
 | `SEARCH_ENGINE` | `searxng` | Default engine; a word in the approval (*medical*, *arxiv*…) overrides it per run |
+| `ATTACH_FILES` | `true` | Attach the report as PDF and Markdown downloads |
 | `POLL_SECONDS` / `TIMEOUT_MINUTES` | `5` / `30` | Progress polling; runs over the limit are stopped in LDR |
 | `ADMIN_ONLY` | `true` | Only Open WebUI admins can use it (each run costs tokens) |
 
