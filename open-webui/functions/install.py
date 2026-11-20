@@ -48,6 +48,18 @@ async def main():
             current.setdefault("LDR_USERNAME", secrets.get("ldr_user", "openwebui"))
             await Functions.update_function_valves_by_id(fid, current)
             print(f"valves set for {fid}: {sorted(k for k in current)} (password from .env)")
+    # Hide the Deep Research model from the model picker (the toggle routes to it; hidden models still run).
+    from open_webui.models.models import ModelForm, ModelMeta, ModelParams, Models
+    meta = ModelMeta(description="Used by the Deep Research toggle", hidden=True)
+    existing_model = await Models.get_model_by_id("deep_research")
+    if existing_model is None:
+        await Models.insert_new_model(ModelForm(id="deep_research", name="Deep Research", meta=meta, params=ModelParams()), owner)
+        print("model deep_research: created, hidden")
+    else:
+        m = existing_model.model_dump()
+        m["meta"] = {**(m.get("meta") or {}), "hidden": True}
+        await Models.update_model_by_id("deep_research", ModelForm(**m))
+        print("model deep_research: hidden")
     for fid in REMOVED:
         if await Functions.get_function_by_id(fid):
             await Functions.delete_function_by_id(fid)

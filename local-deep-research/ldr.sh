@@ -3,7 +3,7 @@
 set -euo pipefail
 cd ~/HomeLab
 eval "$(grep -E '^DEEP_RESEARCH_(USER|PASSWORD)=' .env | sed 's/^/export /')"
-ACTION="$1" MODEL="${2:-}" QUERY="${3:-What are the main differences between the James Webb and Hubble space telescopes, and what has JWST discovered so far?}" \
+ACTION="$1" MODEL="${2:-}" ENGINE="${4:-searxng}" QUERY="${3:-What are the main differences between the James Webb and Hubble space telescopes, and what has JWST discovered so far?}" \
 python3 -u - <<'EOF'
 import http.cookiejar, json, os, re, time, urllib.parse, urllib.request
 B = "http://127.0.0.1:5000"
@@ -31,7 +31,7 @@ if A in ("terminate", "history"):
 elif A == "test":
     req("PUT", "/settings/api/llm.model", {"value": os.environ["MODEL"]}, headers=H); print("model:", os.environ["MODEL"])
     t0 = time.time()
-    rid = json.loads(req("POST", "/api/start_research", {"query": os.environ["QUERY"], "mode": "quick", "search_engines": ["searxng"],
+    rid = json.loads(req("POST", "/api/start_research", {"query": os.environ["QUERY"], "mode": "quick", "search_engine": os.environ["ENGINE"], "search_engines": [os.environ["ENGINE"]],
                                                           "iterations": 2, "questions_per_iteration": 3}, headers=H)[1])["research_id"]
     print("research id:", rid); last = None
     while True:

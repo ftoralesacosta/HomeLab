@@ -5,13 +5,14 @@ Open WebUI stores the installed copy in its database (Admin Panel → Functions)
 
 ## Deep Research (Local Deep Research in the chat)
 
-Two ways in, same flow:
+Pick any model, click **Deep Research** in the chat input bar, type your topic. The model you
+picked writes the plan.
 
-- **Toggle (usual):** pick any model, click **Deep Research** in the chat input bar, type your topic.
-  The model you picked writes the plan. ([deep_research_toggle.py](deep_research_toggle.py), a filter
-  with `toggle = True`: it hands the message to the Deep Research model and remembers your model as the planner.)
-- **Model:** pick **Deep Research** in the model picker. `PLANNER_MODEL` writes the plan.
-  ([deep_research_model.py](deep_research_model.py), a *pipe* function, id `deep_research`; it does the actual work.)
+- [deep_research_toggle.py](deep_research_toggle.py): the toggle (a filter with `toggle = True`). It hands
+  the message to the Deep Research model and remembers your model as the planner.
+- [deep_research_model.py](deep_research_model.py): the Deep Research model (a *pipe* function, id
+  `deep_research`) that does the work. It is **hidden** from the model picker (`install.sh` sets
+  `meta.hidden`); hidden models still run.
 
 Keep the toggle on for the whole conversation (plan, revisions, approval). Two steps, so you approve
 the plan before any searching (and token spending) starts:
@@ -21,6 +22,16 @@ the plan before any searching (and token spending) starts:
 2. **Approve, revise or drop it.**
    - Reply **approve** (or *yes*, *go ahead*, *ok*, *run it*…) to run it. Add notes after it if you
      like: *"approve, focus on a $20k/yr spender"*. Notes are appended to the plan.
+   - **Pick the sources** with a word in the approval:
+
+     | You write | Searched (LDR engine) |
+     |---|---|
+     | *approve* | the web through SearXNG (default, valve `SEARCH_ENGINE`) |
+     | *approve medical* (or *pubmed*, *clinical*, *journals*, *peer-reviewed*, *health*) | **PubMed**: peer-reviewed biomedical and medical journals (NCBI, no API key needed) |
+     | *approve arxiv* / *preprints* | arXiv preprints |
+     | *approve wikipedia* | Wikipedia |
+
+     LDR's agent may still consult other sources when a question needs them; the chosen engine is the main one.
    - Reply anything else (*"add the Platinum card"*) and it writes a revised plan.
    - You can also edit the plan message (pencil icon) before approving: the approved plan is the
      last plan message as it is now.
@@ -45,13 +56,13 @@ search), so progress and the answer behave like any other reply.
 
 | Valve | Default | Meaning |
 |---|---|---|
-| `PLANNER_MODEL` | `google/gemma-4-31B-it` | Plan writer when you pick the Deep Research model directly (with the toggle, your chosen model plans) |
+| `PLANNER_MODEL` | `google/gemma-4-31B-it` | Fallback plan writer if no model is passed (with the toggle, your chosen model plans) |
 | `LDR_BASE_URL` | `http://127.0.0.1:5000` | LDR (Open WebUI runs on the host network) |
 | `LDR_USERNAME` / `LDR_PASSWORD` | `openwebui` / from `.env` | LDR service account |
 | `RESEARCH_MODEL` | `google/gemma-4-31B-it` | W&B model LDR uses. **Non-reasoning models only** (see below) |
 | `MODE` | `quick` | `quick` = cited summary; `detailed` = long multi-section report |
 | `ITERATIONS` / `QUESTIONS_PER_ITERATION` | `2` / `3` | Search depth vs. time and tokens |
-| `SEARCH_ENGINE` | `searxng` | Primary engine (LDR's agent also uses Wikipedia, arXiv, OpenAlex... when useful) |
+| `SEARCH_ENGINE` | `searxng` | Default engine; a word in the approval (*medical*, *arxiv*…) overrides it per run |
 | `POLL_SECONDS` / `TIMEOUT_MINUTES` | `5` / `30` | Progress polling; runs over the limit are stopped in LDR |
 | `ADMIN_ONLY` | `true` | Only Open WebUI admins can use it (each run costs tokens) |
 

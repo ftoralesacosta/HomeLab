@@ -50,7 +50,7 @@ Gemma 4 31B finished a quick report in 5 min (9 KB, 31 sources: Wikipedia, journ
 `ldr.sh` logs in as the service account (credentials from `.env`, never printed):
 
 ```bash
-local-deep-research/ldr.sh test google/gemma-4-31B-it "your question"   # quick research, report in /tmp/ldr_test_report.md
+local-deep-research/ldr.sh test google/gemma-4-31B-it "your question" [searxng|pubmed|arxiv]   # quick research, report in /tmp/ldr_test_report.md
 local-deep-research/ldr.sh terminate                                     # stop running research
 ```
 

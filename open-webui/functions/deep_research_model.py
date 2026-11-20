@@ -1,7 +1,7 @@
 """
 title: Deep Research
 author: homelab (HomeLab/open-webui/functions)
-version: 2.1.0
+version: 2.2.0
 required_open_webui_version: 0.6.0
 description: The Deep Research flow (as a model, and behind the Deep Research toggle). Send a topic and it replies with a research plan. Reply "approve" (optionally with notes) to run it in Local Deep Research with live progress and get a cited report; anything else revises the plan.
 """
@@ -21,7 +21,16 @@ APPROVE_RE = re.compile(
     re.I,
 )
 
-FILLER_RE = re.compile(r"[\W_]*((please|pls|thanks|thank you|and|&|run|do|go|it|the|this|that|research|plan|now|start)[\W_]*)*", re.I)
+# words in the approval message that pick the main source (LDR search engine)
+SOURCE_WORDS = [
+    (re.compile(r"\b(pub ?med|medical|medicine|clinical|biomedical|health|journals?|peer[- ]reviewed)\b", re.I), "pubmed",
+     "PubMed (peer-reviewed biomedical and medical literature)"),
+    (re.compile(r"\b(arxiv|preprints?)\b", re.I), "arxiv", "arXiv (preprints: physics, CS, math, quantitative biology)"),
+    (re.compile(r"\b(wikipedia|encyclop(a)?edia)\b", re.I), "wikipedia", "Wikipedia"),
+    (re.compile(r"\b(web|searx(ng)?|general)\b", re.I), "searxng", "the web (SearXNG)"),
+]
+
+FILLER_RE = re.compile(r"[\W_]*((please|pls|thanks|thank you|and|&|run|do|go|it|the|this|that|research|plan|now|start|only|use|using|with|search|sources?|on)[\W_]*)*", re.I)
 
 PLANNER_PROMPT = """You are a research planner. Do not answer the user's question and do not search the web.
 Turn the user's topic into a research plan that a separate deep-research engine will execute.
@@ -52,8 +61,8 @@ The reply is the plan only, written once, in this Markdown structure:
 
 Keep it concise and use the user's language. Do not add anything before or after the plan."""
 
-FOOTER = ("\n\n---\n_Reply **approve** to run this plan (you can add notes, e.g. \"approve, focus on X\"), "
-          "or tell me what to change. You can also edit this message before approving._")
+FOOTER = ("\n\n---\n_Reply **approve** to run this plan on the web, or **approve medical** to search PubMed journals "
+          "(notes allowed, e.g. \"approve, focus on X\"). Or tell me what to change, or edit this message first._")
 
 
 def clean_plan(text: str) -> str:
@@ -89,7 +98,7 @@ class Pipe:
         MODE: Literal["quick", "detailed"] = Field(default="quick", description="quick = cited summary (minutes); detailed = long multi-section report")
         ITERATIONS: int = Field(default=2, ge=1, le=8, description="Search rounds")
         QUESTIONS_PER_ITERATION: int = Field(default=3, ge=1, le=8, description="Follow-up questions per round")
-        SEARCH_ENGINE: str = Field(default="searxng", description="Primary LDR search engine")
+        SEARCH_ENGINE: str = Field(default="searxng", description="Default LDR search engine (\"approve medical\" switches a run to pubmed)")
         POLL_SECONDS: int = Field(default=5, ge=2, le=60)
         TIMEOUT_MINUTES: int = Field(default=30, ge=5, le=180)
         ADMIN_ONLY: bool = Field(default=True, description="Only Open WebUI admins may use it (each run costs LLM tokens)")
@@ -114,12 +123,21 @@ class Pipe:
         m = APPROVE_RE.match(last_user)
         if plan_msg and m:
             notes = last_user[m.end():].strip()
-            if FILLER_RE.fullmatch(notes):  # "approve, please do the research plan" -> no notes
+            engine, label = self.valves.SEARCH_ENGINE, ""
+            rest = notes
+            for rx, eng, desc in SOURCE_WORDS:  # "approve medical" / "approve, pubmed only" -> PubMed
+                if rx.search(notes):
+                    engine, label = eng, desc
+                    rest = rx.sub("", notes)
+                    break
+            if FILLER_RE.fullmatch(rest):  # nothing but filler ("please do the research plan", "only") -> no notes
                 notes = ""
             plan = clean_plan(text_of(plan_msg.get("content")))
+            if label:
+                plan += f"\n\n**Primary source:** {label}. Base the findings on it and cite it."
             if notes:
                 plan += f"\n\n**Additional instructions from the user:** {notes}"
-            return await self._research(plan, status)
+            return await self._research(plan, status, engine)
         # With the toggle, the model the user picked writes the plan; picking "Deep Research" directly uses PLANNER_MODEL.
         planner = body.get("deep_research_planner_model") or self.valves.PLANNER_MODEL
         return await self._plan(msgs, __user__, __request__, status, planner)
@@ -153,7 +171,7 @@ class Pipe:
         return plan + FOOTER
 
     # ---------- step 2: research ----------
-    async def _research(self, plan: str, status) -> str:
+    async def _research(self, plan: str, status, engine: str) -> str:
         v = self.valves
         if not v.LDR_PASSWORD:
             return "Deep Research is not configured: set LDR_PASSWORD in the function's valves."
@@ -162,7 +180,7 @@ class Pipe:
                  "use the sub-questions and search queries as guidance, respect the scope and source guidance, "
                  "and produce the requested deliverable with citations.\n\n" + plan)[:9500]
         t0 = time.time()
-        await status("Deep research: starting…")
+        await status(f"Deep research: starting ({engine})…")
         try:
             # unsafe=True: aiohttp otherwise drops cookies set by an IP-address host (127.0.0.1)
             async with aiohttp.ClientSession(cookie_jar=aiohttp.CookieJar(unsafe=True),
@@ -170,7 +188,7 @@ class Pipe:
                 csrf = await self._login(s, base)
                 async with s.post(f"{base}/api/start_research", headers={"X-CSRF-Token": csrf}, json={
                     "query": query, "mode": v.MODE, "model_provider": "openai_endpoint", "model": v.RESEARCH_MODEL,
-                    "search_engine": v.SEARCH_ENGINE, "search_engines": [v.SEARCH_ENGINE],
+                    "search_engine": engine, "search_engines": [engine],
                     "iterations": v.ITERATIONS, "questions_per_iteration": v.QUESTIONS_PER_ITERATION}) as r:
                     data = await r.json(content_type=None)
                 rid = (data or {}).get("research_id")
@@ -212,7 +230,7 @@ class Pipe:
         mins, secs = divmod(int(time.time() - t0), 60)
         await status(f"Deep research complete ({mins}m{secs:02d}s)", True)
         return (f"{REPORT_HEADING}\n\n{report}\n\n"
-                f"<sub>Local Deep Research · {v.RESEARCH_MODEL} · {v.MODE} · {mins}m{secs:02d}s · id {rid}</sub>")
+                f"<sub>Local Deep Research · {engine} · {v.RESEARCH_MODEL} · {v.MODE} · {mins}m{secs:02d}s · id {rid}</sub>")
 
     async def _login(self, s: aiohttp.ClientSession, base: str) -> str:
         async with s.get(f"{base}/auth/login") as r:
