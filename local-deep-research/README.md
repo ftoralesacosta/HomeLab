@@ -1,40 +1,61 @@
 # Local Deep Research (LDR)
 
-https://research.ftoralesacosta.me runs [Local Deep Research](https://github.com/LearningCircuit/local-deep-research):
-it breaks a question into sub-questions, searches the web through our SearXNG over several rounds,
-reads the sources, and writes a cited Markdown report.
+[Local Deep Research](https://github.com/LearningCircuit/local-deep-research) breaks a question into
+sub-questions, searches through our SearXNG over several rounds, reads the sources, and writes a cited
+Markdown report. **Open WebUI is the front door**: you run it from the chat (Deep Research toggle →
+plan → *Approve & Run Deep Research*), see [../open-webui/functions/README.md](../open-webui/functions/README.md).
 
 | Item | Value |
 |---|---|
 | Container | `local-deep-research` (`localdeepresearch/local-deep-research:2.0.1`), on `proxy-net` |
-| Ports | `127.0.0.1:5000` only (for Open WebUI, which uses the host network). Outside: NPM host `research.` |
-| Access | Authelia gate, `admin` group, 2FA. Then LDR's own login (one account per person) |
-| Search | `http://searxng:8080` (our SearXNG; JSON API on, limiter off) |
-| LLM | W&B Inference, the same OpenAI-compatible endpoint as Open WebUI and Hermes (`COREWEAVE_API_BASE` / `COREWEAVE_API_KEY` from `.env`) |
-| Data | `~/.volumes/local-deep-research/` (per-user SQLCipher databases, reports, settings). In the nightly backup (caches and logs skipped) |
+| Exposure | **None outside the server**: `127.0.0.1:5000` only (Open WebUI uses the host network). No subdomain, no NPM host |
+| Login | LDR keeps one account: the service account `openwebui` (`DEEP_RESEARCH_USER` / `DEEP_RESEARCH_PASSWORD` in `.env`). Registration is closed |
+| Search | `http://searxng:8080` (our SearXNG; JSON API on, limiter off). LDR's agent may add Wikipedia, arXiv, OpenAlex, Semantic Scholar |
+| LLM | W&B Inference (`COREWEAVE_API_BASE` / `COREWEAVE_API_KEY` from `.env`), model chosen per run by the Open WebUI action (`google/gemma-4-31B-it`) |
+| Data | `~/.volumes/local-deep-research/` (SQLCipher database of the account, reports, settings). In the nightly backup (caches and logs skipped) |
+
+## Why not Authelia
+
+LDR encrypts each account's database with a key derived from that account's password. A login done
+by Authelia (OIDC or a trusted header) never gives LDR the password, so it could not open the
+database; LDR 2.0.1 has no SSO. Instead nobody logs in to LDR directly: Open WebUI (Authelia OIDC)
+is the only way in, and its action uses the service account.
+
+## Admin access to LDR's own UI
+
+Research history, logs and settings of the service account:
+
+```bash
+ssh -L 5000:127.0.0.1:5000 fernando@ftoralesacosta.me   # then open http://localhost:5000
+```
+
+Log in as `openwebui` with `DEEP_RESEARCH_PASSWORD` from `.env`. The password encrypts the data:
+if it is lost, the account's history is lost too (create a new account, update `.env`, rerun
+`open-webui/functions/install.sh`).
 
 ## Settings
 
-`LDR_<SETTING>` variables in `docker-compose.yml` set a setting **and lock it** in LDR's UI
-(the name is the setting key in capitals, dots → `_`, e.g. `search.tool` → `LDR_SEARCH_TOOL`).
-Locked: LLM provider (`openai_endpoint`), endpoint URL and key, search engine (`searxng`) and its URL.
-Everything else is per user, in LDR's **Settings**:
+`LDR_<SETTING>` variables in `docker-compose.yml` set a setting **and lock it** in LDR's UI (setting key
+in capitals, dots → `_`, e.g. `search.tool` → `LDR_SEARCH_TOOL`). Locked: LLM provider
+(`openai_endpoint`), endpoint URL and key, search engine (`searxng`) and its URL, registration (off).
+The Open WebUI action sends model, mode, iterations and questions per run.
 
-- **LLM → Model**: pick one from the endpoint (24 models). Research makes many calls, so a fast,
-  cheap model is the sensible default (e.g. `deepseek-ai/DeepSeek-V4.1-Flash` or `Qwen/Qwen3.6-35B-A3B`);
-  use a bigger one when quality matters more than cost.
-- **Search → iterations / questions per iteration**: depth vs. time and tokens (defaults 3 × 1).
+**Use a non-reasoning model.** Reasoning models (DeepSeek-V4.x, Kimi, GLM-5.3, MiniMax) often
+return empty answers to LDR's short prompts because the whole token budget goes to hidden reasoning.
+Tested 2026-11-19: DeepSeek-V4.1-Flash produced 149 empty answers in 10 minutes and was stopped;
+Gemma 4 31B finished a quick report in 5 min (9 KB, 31 sources: Wikipedia, journals, arXiv).
 
-## Accounts
+## Helper
 
-Each person registers their own account (data is encrypted with their password, so a forgotten
-password cannot be recovered). Registration is open while the first accounts are made
-(`LDR_APP_ALLOW_REGISTRATIONS: "true"`); set it to `"false"` and run `docker compose up -d local-deep-research` afterwards.
+`ldr.sh` logs in as the service account (credentials from `.env`, never printed):
+
+```bash
+local-deep-research/ldr.sh test google/gemma-4-31B-it "your question"   # quick research, report in /tmp/ldr_test_report.md
+local-deep-research/ldr.sh terminate                                     # stop running research
+```
 
 ## Roadmap
 
-1. **Done:** LDR deployed, own web UI behind Authelia.
-2. Open WebUI: a *Deep Research* toggle (Filter: the model writes a research plan) and an
-   *Approve & Run Deep Research* button (Action: sends the plan to LDR on `127.0.0.1:5000`,
-   streams progress, posts the cited report into the chat).
-3. MCP: LDR's MCP server (`python -m local_deep_research.mcp`) for opencode and Hermes.
+1. **Done:** LDR deployed and tested end to end.
+2. **Done:** Open WebUI toggle (plan) + *Approve & Run Deep Research* action.
+3. MCP: LDR's MCP server (`python -m local_deep_research.mcp`) for opencode and Hermes, using the same service account.

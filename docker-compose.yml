@@ -54,9 +54,9 @@ services:
     security_opt: [no-new-privileges:true]
     environment:
       CLOUDFLARE_API_TOKEN: ${Cloudflare_API_KEY}
-      DOMAINS: ${DOMAIN_NAME},mc.${DOMAIN_NAME},wiki.${DOMAIN_NAME},research.${DOMAIN_NAME}
-      # Root and mc. stay DNS-only (Minecraft is not HTTP); wiki. and research. go through the Cloudflare proxy.
-      PROXIED: "is(wiki.${DOMAIN_NAME},research.${DOMAIN_NAME})"
+      DOMAINS: ${DOMAIN_NAME},mc.${DOMAIN_NAME},wiki.${DOMAIN_NAME}
+      # Root and mc. stay DNS-only (Minecraft is not HTTP); wiki. goes through the Cloudflare proxy.
+      PROXIED: "is(wiki.${DOMAIN_NAME})"
       IP6_PROVIDER: none
       <<: *tz
 
@@ -475,9 +475,10 @@ services:
 
   # --- AI -------------------------------------------------------------------------------
   # Local Deep Research (LDR): multi-step research with cited reports.
-  # https://research.ftoralesacosta.me (Authelia gate, admin) + its own login (encrypted per-user DB).
+  # Not exposed: Open WebUI is the front door (Authelia OIDC); its Deep Research Action logs in to LDR
+  # with the service account DEEP_RESEARCH_USER/PASSWORD (.env). Admin UI: ssh -L 5000:127.0.0.1:5000.
   # Searches through our SearXNG; the LLM is W&B Inference (same endpoint as Open WebUI/Hermes).
-  # 127.0.0.1:5000 is for Open WebUI (host network) - the Deep Research Action (phase 2).
+  # 127.0.0.1:5000 only: Open WebUI runs on the host network.
   # LDR_* variables set a setting AND lock it in LDR's UI; everything else is set in its UI.
   local-deep-research:
     <<: *app
@@ -493,8 +494,8 @@ services:
       LDR_SEARCH_TOOL: searxng
       LDR_SEARCH_ENGINE_WEB_SEARXNG_DEFAULT_PARAMS_INSTANCE_URL: http://searxng:8080
       LDR_SERVER_FORWARDED_ALLOW_IPS: 172.23.0.0/16   # trust X-Forwarded-For from NPM on proxy-net
-      # Open while the first account is created, then set to "false" (accounts are per-person, encrypted).
-      LDR_APP_ALLOW_REGISTRATIONS: "true"
+      # Closed: the only account is the service account (DEEP_RESEARCH_USER in .env). To add one: "true", up -d, register, back to "false".
+      LDR_APP_ALLOW_REGISTRATIONS: "false"
     volumes:
       - ${DOCKERDIR}/local-deep-research/data:/data
       - ${DOCKERDIR}/local-deep-research/config:/app/.config/local_deep_research

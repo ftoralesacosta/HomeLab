@@ -21,9 +21,9 @@ Each web app has its own subdomain, for example `sonarr.ftoralesacosta.me`.
 
 | Area | Services |
 |---|---|
-| Edge | `reverse-proxy`: Nginx Proxy Manager (NPM) on 80/443, admin UI on port 81 (LAN only). `cloudflare-ddns`: keeps `ftoralesacosta.me`, `mc.`, `wiki.` and `research.` on the home IP |
+| Edge | `reverse-proxy`: Nginx Proxy Manager (NPM) on 80/443, admin UI on port 81 (LAN only). `cloudflare-ddns`: keeps `ftoralesacosta.me`, `mc.` and `wiki.` on the home IP |
 | Login | `authelia` (auth.): single sign-on and 2FA. `signup` (signup.): public form to request an account |
-| AI | `open-webui` (webui.), `searxng` (web search, LAN only), `local-deep-research` (research., cited research reports, see [local-deep-research/README.md](local-deep-research/README.md)). Hermes agent: systemd service `hermes-gateway`, not Docker, API on 127.0.0.1:8642 |
+| AI | `open-webui` (webui.), `searxng` (web search, LAN only), `local-deep-research` (cited research reports, used from Open WebUI's *Deep Research* toggle and *Approve & Run* button; not exposed; see [local-deep-research/README.md](local-deep-research/README.md)). Hermes agent: systemd service `hermes-gateway`, not Docker, API on 127.0.0.1:8642 |
 | Media | `jellyfin` (player). `sonarr`, `radarr`, `lidarr` (TV, movies, music), `prowlarr` + `flaresolverr` (indexers), `bazarr` (subtitles), `seerr` (family requests) |
 | Books | `bindery` (finds and downloads books), `kavita` (reader; shared `Books` library, progress per user) |
 | Downloads | `sabnzbd` (Usenet). `qbittorrent` and `slskd` (Soulseek), both inside the `vpn` container (gluetun, ProtonVPN) |
@@ -114,7 +114,7 @@ These live in each app's database, not in this repo. Change them in the app's UI
 | App | Schedule |
 |---|---|
 | `actual-ai` | Categorizes daily at 06:00 (`CLASSIFICATION_SCHEDULE_CRON` in compose) |
-| `cloudflare-ddns` | Checks the public IP every 5 min and updates `@`, `mc.`, `wiki.` and `research.` |
+| `cloudflare-ddns` | Checks the public IP every 5 min and updates `@`, `mc.` and `wiki.` |
 | Local Deep Research | Cleanup of inactive sessions every 5 min; its news scheduler (only runs subscriptions you create) |
 | Seerr | Jellyfin recently added: every 5 min · full scan 03:00 · Radarr 04:00 · Sonarr 04:30 · availability 05:00 · download sync every minute |
 | Bindery | Metadata refresh hourly, library scan, search for wanted books (13 jobs) |
@@ -185,14 +185,13 @@ login. Gated apps need a second factor (TOTP or security key). Details: [autheli
 | Home Assistant | Gate, then HA's own login (HA cannot trust a proxy login). The companion app uses HA tokens on `/api/` and `/auth/token` | admin |
 | SABnzbd, qBittorrent, slskd | Gate. Their own logins are off: SABnzbd has no user name, qBittorrent skips its login for `proxy-net` (`WebUI\AuthSubnetWhitelist=172.23.0.0/16`), slskd auth is off | admin |
 | receipts. | Gate | admin |
-| Local Deep Research (research.) | Gate, then LDR's own login (one account per person, encrypted) | admin |
 | *arr apps | Gate. `/api` skips the gate for API-key clients | admin, family |
 | Bazarr | Gate. Its own login is off (`auth.type: null` in its `config.yaml`) | admin, family |
 | Bindery | Gate. Bindery takes the user name from the gate | admin, family |
 | Kiwix (wiki.) | Gate, password only (`one_factor`) | admin, family, friends |
 | Seerr | No gate. Its only login is the Jellyfin one (local login off, `main.localLogin: false`), and Jellyfin checks the password against Authelia, so it is the Authelia password | Anyone with Jellyfin access (admin, family) |
 | Jellyfin | No gate. Its own login form; a plugin checks the password against Authelia | admin, family |
-| Open WebUI | OIDC ("Continue with Authelia"); the account is created as a normal *user* | admin, family, friends |
+| Open WebUI | OIDC ("Continue with Authelia"); the account is created as a normal *user*. Its *Approve & Run Deep Research* button (admins) uses Local Deep Research with a service account, so LDR needs no login of its own | admin, family, friends |
 | Kavita | OIDC with auto-login (client `kavita`, policy `media`). The first login creates the account with roles Login, Bookmark, Download and the shared `Books` library. Authelia shows a consent screen on each fresh login, because Kavita always requests `offline_access` | admin, family |
 | Actual | OIDC (client `actual-budget`, policy `admin_only`). `ACTUAL_USER_CREATION_MODE=login` creates the Actual user on the first login (role *basic*); share budget files with them in Actual | admin |
 
@@ -221,6 +220,7 @@ variable. A container gets only the variables in its own `environment:` block.
 
 Other secret files, also only on the server: `authelia/configuration.yml`,
 `authelia/users/auth_file.yml`, `signup/smtp.env`, and Kavita's `appsettings.json` (OIDC secret).
+Open WebUI's database holds a copy of `DEEP_RESEARCH_PASSWORD` in the Deep Research action's valves.
 
 Hermes cannot read `.env`. Before Hermes starts, `hermes-env.service` copies its two keys into the
 root-only file `/run/hermes-gateway.env` (install: `sudo bash systemd/install-hermes-env.sh`). The
@@ -258,7 +258,7 @@ Prowlarr holds the indexers and syncs them to the *arr apps; Bindery pulls them 
 | Router | Banana Pi BPI-R4, OpenWrt 25.12, 192.168.4.1. Away: `ssh -L 8443:192.168.4.1:443 fernando@ftoralesacosta.me`, then https://localhost:8443 |
 | Server | 192.168.4.51 (DHCP reservation) on Wi-Fi `wlp130s0`. The wired ports (`enp129s0`, `eno0`) are not cabled yet; [server/setup-wired.sh](server/setup-wired.sh) makes the cable primary and keeps Wi-Fi as backup |
 | Port forwards | TCP 22 (SSH), 80 + 443 (NPM), 25565 (Minecraft) |
-| DNS | Subdomains go through the Cloudflare proxy. `ftoralesacosta.me` and `mc.` are DNS-only, because Minecraft is not HTTP. `cloudflare-ddns` keeps `@`, `mc.`, `wiki.` and `research.` current |
+| DNS | Subdomains go through the Cloudflare proxy. `ftoralesacosta.me` and `mc.` are DNS-only, because Minecraft is not HTTP. `cloudflare-ddns` keeps `@`, `mc.` and `wiki.` current |
 | Jellyfin at home | The router's DNS sends `jellyfin.ftoralesacosta.me` to 192.168.4.51, so media stays on the LAN |
 | Disks | `/` 256 GB NVMe (OS) · `/mnt/data` 2 TB NVMe (downloads, backups, Kiwix) · `/mnt/media` 14 TB HDD (media library) |
 
@@ -271,6 +271,7 @@ Debian security updates install automatically, without reboots. Other updates ar
 - [backup/README.md](backup/README.md): nightly backup to the second NVMe and Google Drive, and restore
 - [ActualBudget/README.md](ActualBudget/README.md): budget jobs, receipt pages, scripts
 - [kiwix/README.md](kiwix/README.md): offline Wikipedia, content and updates
-- [local-deep-research/README.md](local-deep-research/README.md): research reports, settings, roadmap (Open WebUI, MCP)
+- [local-deep-research/README.md](local-deep-research/README.md): research engine, service account, model choice
+- [open-webui/functions/README.md](open-webui/functions/README.md): Deep Research toggle and Approve button (Open WebUI functions), valves
 - [HomeAssistant/README.md](HomeAssistant/README.md): config files, debug logging
 - [OpenWRT-BPI_R4/README.md](OpenWRT-BPI_R4/README.md): router, fiber stick, recovery
