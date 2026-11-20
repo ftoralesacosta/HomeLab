@@ -47,7 +47,7 @@ the plan before any searching (and token spending) starts:
    **Markdown** downloads attached to the message and linked under the report. The PDF comes from
    LDR's own exporter; both files are stored in Open WebUI's file storage. The stop button also
    stops the job in LDR.
-4. **No follow-up suggestions** under plans or reports (Open WebUI's follow-up job gets an empty list from the function); chat titles still work.
+4. **No follow-up suggestions** under plans or reports. Open WebUI generates them with the model recorded on the answer, so the function records itself (`deep_research`) on its answers and returns an empty list for that job. After a refresh those answers are labelled *Deep Research*. Chat titles still work.
 
 Why the research runs as a model (the toggle just routes to it) and not as a button under the message: Open WebUI 0.11 runs action buttons outside the chat request, so their
 live updates and late results were unreliable. A model runs inside the normal chat request (like web

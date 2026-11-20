@@ -1,7 +1,7 @@
 """
 title: Deep Research
 author: homelab (HomeLab/open-webui/functions)
-version: 3.3.0
+version: 3.4.0
 required_open_webui_version: 0.6.0
 description: The Deep Research flow behind the Deep Research toggle. Send a topic and it replies with a research plan; reply "approve" (or "approve medical" for PubMed) to run it in Local Deep Research with a live task checklist, then get a cited report plus PDF and Markdown downloads.
 """
@@ -136,7 +136,7 @@ class Pipe:
         self.valves = self.Valves()
 
     async def pipe(self, body: dict, __user__: dict | None = None, __request__=None, __event_emitter__=None,
-                   __chat_id__: str | None = None, __task__=None):
+                   __chat_id__: str | None = None, __message_id__: str | None = None, __task__=None):
         user = __user__ or {}
         planner = body.get("deep_research_planner_model") or self.valves.PLANNER_MODEL
 
@@ -147,6 +147,10 @@ class Pipe:
 
         if self.valves.ADMIN_ONLY and user.get("role") != "admin":
             return "Deep Research is limited to admins."
+
+        # Open WebUI runs follow-up suggestions with the model recorded on the answer (the model the user
+        # picked). Record this function instead, so that job comes back here and gets an empty list.
+        await self._claim_message(__chat_id__, __message_id__)
 
         ui = UI(__event_emitter__, __chat_id__)
         msgs = [m for m in (body.get("messages") or []) if m.get("role") in ("user", "assistant")]
@@ -170,6 +174,16 @@ class Pipe:
                 plan += f"\n\n**Additional instructions from the user:** {notes}"
             return await self._research(plan, ui, engine, user)
         return await self._plan(msgs, user, __request__, ui, planner)
+
+    @staticmethod
+    async def _claim_message(chat_id, message_id):
+        if not chat_id or not message_id or str(chat_id).startswith("local:"):
+            return
+        try:
+            from open_webui.models.chats import Chats
+            await Chats.upsert_message_to_chat_by_id_and_message_id(chat_id, message_id, {"model": "deep_research"})
+        except Exception:
+            pass
 
     # ---------- model calls ----------
     async def _complete(self, request, user: dict, model: str, messages: list) -> str:
