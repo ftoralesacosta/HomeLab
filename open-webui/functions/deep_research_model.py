@@ -1,9 +1,9 @@
 """
 title: Deep Research
 author: homelab (HomeLab/open-webui/functions)
-version: 2.0.0
+version: 2.1.0
 required_open_webui_version: 0.6.0
-description: A "Deep Research" model. Send a topic and it replies with a research plan. Reply "approve" (optionally with notes) to run it in Local Deep Research with live progress and get a cited report; anything else revises the plan.
+description: The Deep Research flow (as a model, and behind the Deep Research toggle). Send a topic and it replies with a research plan. Reply "approve" (optionally with notes) to run it in Local Deep Research with live progress and get a cited report; anything else revises the plan.
 """
 
 import asyncio
@@ -79,7 +79,7 @@ def text_of(content) -> str:
 class Pipe:
     class Valves(BaseModel):
         PLANNER_MODEL: str = Field(default="google/gemma-4-31B-it",
-                                   description="Model that writes the plan (any Open WebUI model id). A non-reasoning model gives cleaner plans")
+                                   description="Plan writer when you pick the Deep Research model directly. With the toggle, the model you chose writes the plan")
         LDR_BASE_URL: str = Field(default="http://127.0.0.1:5000", description="Local Deep Research URL (Open WebUI runs on the host network)")
         LDR_USERNAME: str = Field(default="openwebui", description="LDR service account (DEEP_RESEARCH_USER in ~/HomeLab/.env)")
         LDR_PASSWORD: str = Field(default="", description="LDR service account password (DEEP_RESEARCH_PASSWORD in ~/HomeLab/.env)",
@@ -120,14 +120,16 @@ class Pipe:
             if notes:
                 plan += f"\n\n**Additional instructions from the user:** {notes}"
             return await self._research(plan, status)
-        return await self._plan(msgs, __user__, __request__, status)
+        # With the toggle, the model the user picked writes the plan; picking "Deep Research" directly uses PLANNER_MODEL.
+        planner = body.get("deep_research_planner_model") or self.valves.PLANNER_MODEL
+        return await self._plan(msgs, __user__, __request__, status, planner)
 
     # ---------- step 1: plan ----------
-    async def _plan(self, msgs, user: dict, request, status) -> str:
+    async def _plan(self, msgs, user: dict, request, status, planner: str) -> str:
         from open_webui.models.users import Users
         from open_webui.utils.chat import generate_chat_completion
 
-        await status("Writing the research plan…")
+        await status(f"Writing the research plan ({planner.split('/')[-1]})…")
         convo = []
         for m in msgs:  # previous plans stay (so feedback revises them); reports are dropped
             content = text_of(m.get("content"))
@@ -137,7 +139,7 @@ class Pipe:
                     continue
             convo.append({"role": m["role"], "content": content})
         user_obj = await Users.get_user_by_id(user["id"])
-        res = await generate_chat_completion(request, {"model": self.valves.PLANNER_MODEL, "stream": False,
+        res = await generate_chat_completion(request, {"model": planner, "stream": False,
                                                        "messages": [{"role": "system", "content": PLANNER_PROMPT}] + convo},
                                              user_obj, bypass_filter=True)
         if hasattr(res, "body"):  # JSONResponse

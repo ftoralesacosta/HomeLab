@@ -15,6 +15,7 @@ from open_webui.utils.plugin import load_function_module_by_id, replace_imports
 SRC = Path("/tmp/owui-functions")
 FUNCS = [  # (id, file, display name): the "Deep Research" model (a pipe function)
     ("deep_research", "deep_research_model.py", "Deep Research"),
+    ("deep_research_toggle", "deep_research_toggle.py", "Deep Research (toggle)"),
 ]
 REMOVED = ["approve_deep_research"]  # v1 (toggle filter + action button), replaced by the model
 
