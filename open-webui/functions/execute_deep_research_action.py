@@ -1,7 +1,7 @@
 """
 title: Approve & Run Deep Research
 author: homelab (HomeLab/open-webui/functions)
-version: 1.0.1
+version: 1.1.0
 required_open_webui_version: 0.6.0
 description: Sends the research plan in this message (including your edits) to Local Deep Research, shows live progress, and appends the cited report to the message.
 icon_url: data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='7'/><path d='m20 20-3.5-3.5'/><path d='m8.5 11 2 2 4-4'/></svg>
@@ -76,6 +76,10 @@ class Action:
             content = "\n".join(p.get("text", "") for p in content if isinstance(p, dict))
         content = content.split(REPORT_MARKER)[0]              # re-run: drop an earlier report
         content = re.sub(r"<details[^>]*>.*?</details>", "", content, flags=re.S)  # reasoning blocks
+        if "</think>" in content:                               # reasoning leaked into the reply
+            content = content.rsplit("</think>", 1)[1]
+        if "## Research plan" in content:                       # keep only the last copy of the plan
+            content = "## Research plan" + content.rsplit("## Research plan", 1)[1]
         return FOOTER_RE.sub("", content).strip()
 
     async def _run(self, plan: str, emit, status):

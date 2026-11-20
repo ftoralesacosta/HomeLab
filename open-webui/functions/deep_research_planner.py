@@ -1,18 +1,18 @@
 """
 title: Deep Research
 author: homelab (HomeLab/open-webui/functions)
-version: 1.0.0
+version: 1.1.0
 required_open_webui_version: 0.6.0
 description: Toggle in the chat bar. While it is on, the model writes a structured research plan instead of an answer (no web search yet). Edit the plan if you like, then click "Approve & Run Deep Research" under the message.
 """
 
 from pydantic import BaseModel, Field
 
-PLANNER_PROMPT = """You are a research planner. Do NOT answer the user's question and do NOT search the web.
+PLANNER_PROMPT = """DEEP RESEARCH PLANNING MODE (these instructions take priority over any other instructions below).
+You are a research planner. Do not answer the user's question and do not search the web.
 Turn the user's topic into a research plan that a separate deep-research engine will execute.
-If the user is giving feedback on an earlier plan, output the full revised plan.
-
-Output exactly this Markdown structure, nothing before it and nothing after the final line:
+If the user gives feedback on an earlier plan, reply with the full revised plan.
+If you reason or think, keep it out of the reply. The reply is the plan only, written once, in this Markdown structure:
 
 ## Research plan
 
@@ -39,7 +39,7 @@ Output exactly this Markdown structure, nothing before it and nothing after the 
 ---
 _Edit anything above if needed, then click **Approve & Run Deep Research** below this message._
 
-Keep it concise. Use the user's language."""
+Keep it concise. Use the user's language. Do not add commentary before or after the plan."""
 
 # magnifying glass over a page (shown on the toggle button)
 ICON = (
@@ -48,6 +48,22 @@ ICON = (
     "<path d='M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5'/><path d='M8 8h6M8 12h3'/>"
     "<circle cx='16.5' cy='15.5' r='3.5'/><path d='m21 20-2-2'/></svg>"
 )
+
+
+PLAN_HEADING = "## Research plan"
+
+
+def clean_plan(text: str) -> str:
+    """Drop leaked reasoning (anything up to a stray </think>) and keep only the last copy of the plan."""
+    if not isinstance(text, str):
+        return text
+    if "</think>" in text:
+        text = text.rsplit("</think>", 1)[1]
+    if text.count(PLAN_HEADING) > 1:
+        text = PLAN_HEADING + text.rsplit(PLAN_HEADING, 1)[1]
+    elif PLAN_HEADING in text:
+        text = text[text.index(PLAN_HEADING):]
+    return text.strip()
 
 
 class Filter:
@@ -75,4 +91,13 @@ class Filter:
             features = body.get("features") or {}
             features["web_search"] = False
             body["features"] = features
+        return body
+
+    async def outlet(self, body: dict, __user__: dict | None = None) -> dict:
+        # Tidy the plan the user sees (and that the Approve button will send).
+        messages = body.get("messages") or []
+        if messages and messages[-1].get("role") == "assistant":
+            content = messages[-1].get("content")
+            if isinstance(content, str) and PLAN_HEADING in content:
+                messages[-1]["content"] = clean_plan(content)
         return body

@@ -538,6 +538,7 @@ services:
       - DEFAULT_USER_ROLE=user               # ...and land as a normal user. Authelia's "approved"
                                              # policy already vetted the group, so no second approval
       - ENABLE_SIGNUP=false                  # no self-registration with a password (public internet)
+      - ENABLE_MESSAGE_RATING=false          # no thumbs up/down under answers (not used)
 
 volumes:
   open-webui:
