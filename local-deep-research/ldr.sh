@@ -20,13 +20,13 @@ url, _ = req("POST", "/auth/login", {"username": os.environ["DEEP_RESEARCH_USER"
 assert "/auth/login" not in url, "login failed"
 H = {"X-CSRF-Token": json.loads(req("GET", "/auth/csrf-token")[1])["csrf_token"]}
 A = os.environ["ACTION"]
-if A == "terminate":
+if A in ("terminate", "history"):
     hist = json.loads(req("GET", "/history/api")[1])
     items = hist.get("items", hist) if isinstance(hist, dict) else hist
     for it in items[:10]:
         st = it.get("status")
         print("history:", it.get("id"), st, str(it.get("query"))[:50])
-        if st in ("in_progress", "queued", "pending", "running"):
+        if A == "terminate" and st in ("in_progress", "queued", "pending", "running"):
             print("  terminate ->", req("POST", f"/api/terminate/{it['id']}", {}, headers=H)[1][:120])
 elif A == "test":
     req("PUT", "/settings/api/llm.model", {"value": os.environ["MODEL"]}, headers=H); print("model:", os.environ["MODEL"])
