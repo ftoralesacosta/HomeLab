@@ -11,7 +11,7 @@ plan → reply *approve*), see [../open-webui/functions/README.md](../open-webui
 | Exposure | **None outside the server**: `127.0.0.1:5000` only (Open WebUI uses the host network). No subdomain, no NPM host |
 | Login | LDR keeps one account: the service account `openwebui` (`DEEP_RESEARCH_USER` / `DEEP_RESEARCH_PASSWORD` in `.env`). Registration is closed |
 | Search | `http://searxng:8080` (our SearXNG; JSON API on, limiter off). LDR's agent may add Wikipedia, arXiv, OpenAlex, Semantic Scholar |
-| LLM | W&B Inference (`COREWEAVE_API_BASE` / `COREWEAVE_API_KEY` from `.env`), model chosen per run by the Open WebUI action (`google/gemma-4-31B-it`) |
+| LLM | W&B Inference (`COREWEAVE_API_BASE` / `COREWEAVE_API_KEY` from `.env`), model chosen per run by the Open WebUI function (`google/gemma-4-31B-it`) |
 | Data | `~/.volumes/local-deep-research/` (SQLCipher database of the account, reports, settings). In the nightly backup (caches and logs skipped) |
 
 ## Why not Authelia
