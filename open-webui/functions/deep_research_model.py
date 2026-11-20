@@ -1,7 +1,7 @@
 """
 title: Deep Research
 author: homelab (HomeLab/open-webui/functions)
-version: 3.2.0
+version: 3.3.0
 required_open_webui_version: 0.6.0
 description: The Deep Research flow behind the Deep Research toggle. Send a topic and it replies with a research plan; reply "approve" (or "approve medical" for PubMed) to run it in Local Deep Research with a live task checklist, then get a cited report plus PDF and Markdown downloads.
 """
@@ -140,8 +140,10 @@ class Pipe:
         user = __user__ or {}
         planner = body.get("deep_research_planner_model") or self.valves.PLANNER_MODEL
 
-        if __task__:  # Open WebUI background jobs (title, tags, follow-ups): answer them with the planner model
-            return await self._complete(__request__, user, planner, body.get("messages") or [])
+        if __task__:  # Open WebUI background jobs
+            if "follow_up" in str(__task__):  # no follow-up suggestions under plans or reports
+                return '{"follow_ups": []}'
+            return await self._complete(__request__, user, planner, body.get("messages") or [])  # title, tags
 
         if self.valves.ADMIN_ONLY and user.get("role") != "admin":
             return "Deep Research is limited to admins."
