@@ -484,6 +484,8 @@ services:
     <<: *app
     image: localdeepresearch/local-deep-research:2.0.1
     container_name: local-deep-research
+    # Patch the agent prompts so research opens and reads full pages (patches/read_pages.py), then start as usual.
+    entrypoint: ["/bin/sh", "-c", "/install/.venv/bin/python /patches/read_pages.py; exec /usr/local/bin/ldr_entrypoint.sh ldr-web"]
     ports:
       - "127.0.0.1:5000:5000"
     environment:
@@ -497,17 +499,18 @@ services:
       # Default is 5 logins / 15 min per IP; every research run logs in, all from the Docker gateway IP.
       # LDR is localhost-only and the service account password is long and random.
       LDR_SECURITY_RATE_LIMIT_LOGIN: "120 per hour"
-      # Pages the research agent may open and read per topic (default 2: reports were built from search snippets).
-      LDR_SEARCH_FETCH_MAX_PER_TOPIC: "8"
-      # LDR_SEARCH_SNIPPETS_ONLY stays at its default (true): tested 2026-11-25, full pages crowded the model and
-      # cut a quick report from 40 to 7 citations. The agent opens the key pages itself (fetch budget above).
+      # Pages the research agents may open and read per topic (default 2). patches/read_pages.py reads 2 per search.
+      LDR_SEARCH_FETCH_MAX_PER_TOPIC: "12"
       # PubMed: also download open-access full texts from PubMed Central (up to 3 per search).
       LDR_SEARCH_ENGINE_WEB_PUBMED_DEFAULT_PARAMS_GET_FULL_TEXT: "true"
+      # Pause between LDR searches so one research run does not exhaust SearXNG's upstream engines (rate limits).
+      LDR_SEARCH_ENGINE_WEB_SEARXNG_DEFAULT_PARAMS_DELAY_BETWEEN_REQUESTS: "1"
       # Closed: the only account is the service account (DEEP_RESEARCH_USER in .env). To add one: "true", up -d, register, back to "false".
       LDR_APP_ALLOW_REGISTRATIONS: "false"
     volumes:
       - ${DOCKERDIR}/local-deep-research/data:/data
       - ${DOCKERDIR}/local-deep-research/config:/app/.config/local_deep_research
+      - ./local-deep-research/patches:/patches:ro
 
   # Open WebUI. Data volume is the pre-existing "open-webui_open-webui".
   open-webui:

@@ -13,3 +13,20 @@ search:
   formats:
     - html
     - json
+
+# More web engines, so research runs (Local Deep Research makes dozens of searches) spread their load
+# instead of exhausting the few default ones. With use_default_settings, listing an engine here only
+# overrides its "disabled" flag; everything else comes from SearXNG's defaults.
+engines:
+  - name: bing
+    disabled: false
+  - name: google
+    disabled: false
+  - name: qwant
+    disabled: false
+  - name: yahoo
+    disabled: false
+  - name: duckduckgo web
+    disabled: false
+  - name: yep
+    disabled: false

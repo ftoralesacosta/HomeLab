@@ -89,26 +89,45 @@ are removed) either way.
 ### Depth: what every run does (tested 2026-11-25)
 
 LDR's research agent decides by itself when it has enough. Left alone, Gemma stopped after one round of
-searches and wrote from search-result snippets. Two changes apply to **every** run:
+searches and wrote from search-result snippets. Three changes apply to **every** run:
 
 1. **Instructions in front of the plan** (`DEPTH_INSTRUCTIONS` in the function): research each
    sub-question separately (LDR's parallel subtopic agents), open and read key sources, check
    important facts in two sources, do not stop after the first round.
-2. **Page-reading budget** raised from 2 to 8 per topic (`LDR_SEARCH_FETCH_MAX_PER_TOPIC` in compose).
+2. **Page-reading budget** raised from 2 to 12 per topic (`LDR_SEARCH_FETCH_MAX_PER_TOPIC` in compose).
+3. **Pages are always read** ([local-deep-research/patches/read_pages.py](../../local-deep-research/patches/read_pages.py),
+   applied when the LDR container starts). Opening a page is normally the model's choice, and Gemma never
+   made it, even when told to. The patch makes every sub-agent web search also read the top 2 result
+   pages with LDR's own `fetch_content` (it keeps only the passages relevant to the search) and hand
+   those excerpts to the model with the snippets. Written for LDR 2.0.1; on an image upgrade check
+   `docker logs local-deep-research | grep read_pages` says "applied" (it skips itself, with a
+   warning, if LDR's code changed).
 
 Same plan (heat pump vs gas furnace), measured:
 
-| | `approve` | `approve thorough` |
-|---|---|---|
-| Time | 65 s | 10.6 min |
-| Questions researched | 5 | 14 (86 searches) |
-| Sources gathered | 181 | 780 |
-| Citations in the report | 40 | 179 |
-| Report | 11.5 KB | 108 KB |
+| | `approve` (before page reading) | `approve` (with page reading) | `approve thorough` (before page reading) |
+|---|---|---|---|
+| Time | 65 s | 2.9 min | 10.6 min |
+| Questions researched | 5 | 5 | 14 (86 searches) |
+| Pages read in full | 0 | 36 | 0 |
+| Sources gathered | 181 | 404 | 780 |
+| Citations in the report | 40 | 277 | 179 |
+| Report | 11.5 KB | 40 KB | 108 KB |
 
-Tried and reverted: `LDR_SEARCH_SNIPPETS_ONLY=false` (read every result page in full). The full pages
-crowded the model: 24 sources and 7 citations instead of 181 and 40. PubMed open-access full texts
-(`LDR_SEARCH_ENGINE_WEB_PUBMED_DEFAULT_PARAMS_GET_FULL_TEXT`, up to 3 per search) stay on for *approve medical*.
+Tried and dropped:
+- `LDR_SEARCH_SNIPPETS_ONLY=false` (read every result page in full): the full pages crowded the model,
+  24 sources and 7 citations instead of 181 and 40.
+- Telling Gemma to open pages (in the plan, in each subtopic, and in LDR's sub-agent prompt): 0 or 1 pages read.
+- LDR's `source-based` strategy (reads pages without asking the model): it searched for words from the
+  plan's wording ("according"), and the report was about dictionary entries.
+
+PubMed open-access full texts (`LDR_SEARCH_ENGINE_WEB_PUBMED_DEFAULT_PARAMS_GET_FULL_TEXT`, up to 3 per
+search) are on for *approve medical*.
+
+SearXNG: research runs make dozens of searches, and SearXNG's default engines (Brave, DuckDuckGo, Google)
+started refusing them ("too many requests"). [searxng/settings.yml](../../searxng/settings.yml) turns on
+more engines (Bing, Google, Qwant, Yahoo, DuckDuckGo, Yep) and LDR pauses 1 s between searches. SearXNG
+suspends an engine that refuses and retries it later.
 
 ### Research models that work with LDR (probed 2026-11-25)
 
