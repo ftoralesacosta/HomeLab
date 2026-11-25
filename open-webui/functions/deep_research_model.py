@@ -1,7 +1,7 @@
 """
 title: Deep Research
 author: homelab (HomeLab/open-webui/functions)
-version: 3.4.1
+version: 3.5.0
 required_open_webui_version: 0.6.0
 description: The Deep Research flow behind the Deep Research toggle. Send a topic and it replies with a research plan; reply "approve" (or "approve medical" for PubMed) to run it in Local Deep Research with a live task checklist, then get a cited report plus PDF and Markdown downloads.
 """
@@ -79,12 +79,9 @@ FOOTER = f"""
 | 🩺 **Medical journals** — peer-reviewed studies (PubMed) | `approve medical` |
 | 🔬 **Science preprints** — the newest papers (arXiv) | `approve arxiv` |
 | 📚 **Wikipedia** — quick, encyclopedia-level overview | `approve wikipedia` |
+| ✏️ **Edit** — adjust the plan in your own words | `approve, add "XYZ"` |
 
-✏️ **Want something different?** Just say it in your own words — *"add another option to compare"*, *"keep it short"*, *"only the last 2 years"* — and I'll rewrite the plan.
-
-💡 **Add a wish when you approve:** *approve, focus on what matters for a beginner* or *approve medical, only studies from the last 5 years*
-
-⏱️ Research takes about **5 minutes**. You'll see each step tick off as it happens, then get the full report with sources — plus **PDF** and **Markdown** downloads."""
+⏱️ Research takes about **5 minutes**. You'll see each step tick off as it happens, then get the full report with sources."""
 
 
 def clean_plan(text: str) -> str:
