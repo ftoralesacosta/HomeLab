@@ -12,6 +12,7 @@ plan → reply *approve*), see [../open-webui/functions/README.md](../open-webui
 | Login | LDR keeps one account: the service account `openwebui` (`DEEP_RESEARCH_USER` / `DEEP_RESEARCH_PASSWORD` in `.env`). Registration is closed |
 | Search | `http://searxng:8080` (our SearXNG; JSON API on, limiter off). LDR's agent may add Wikipedia, arXiv, OpenAlex, Semantic Scholar |
 | LLM | W&B Inference (`COREWEAVE_API_BASE` / `COREWEAVE_API_KEY` from `.env`), model chosen per run by the Open WebUI function (`google/gemma-4-31B-it`) |
+| Depth | Agent page-reading budget 8 per topic (`LDR_SEARCH_FETCH_MAX_PER_TOPIC`); search results stay snippets (full pages were tested and made reports worse); PubMed open-access full texts on. Details and measurements: [open-webui/functions/README.md](../open-webui/functions/README.md) |
 | Data | `~/.volumes/local-deep-research/` (SQLCipher database of the account, reports, settings). In the nightly backup (caches and logs skipped) |
 
 ## Why not Authelia

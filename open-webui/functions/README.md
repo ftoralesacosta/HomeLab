@@ -33,6 +33,9 @@ the plan before any searching (and token spending) starts:
      | *approve arxiv* / *preprints* | arXiv preprints |
      | *approve wikipedia* | Wikipedia |
 
+   - **Depth:** add *thorough* (or *detailed*, *in-depth*) for the long report: LDR's `detailed` mode
+     writes it section by section with extra searches per section. Combine freely: *approve medical thorough*.
+
      LDR's agent may still consult other sources when a question needs them; the chosen engine is the main one.
    - Reply anything else (*"add the Platinum card"*) and it writes a revised plan.
    - You can also edit the plan message (pencil icon) before approving: the approved plan is the
@@ -68,11 +71,11 @@ search), so progress and the answer behave like any other reply.
 | `LDR_BASE_URL` | `http://127.0.0.1:5000` | LDR (Open WebUI runs on the host network) |
 | `LDR_USERNAME` / `LDR_PASSWORD` | `openwebui` / from `.env` | LDR service account |
 | `RESEARCH_MODEL` | `google/gemma-4-31B-it` | W&B model LDR uses. **Non-reasoning models only** (see below) |
-| `MODE` | `quick` | `quick` = cited summary; `detailed` = long multi-section report |
+| `MODE` | `quick` | Default report type; *approve thorough* picks `detailed` for one run |
 | `ITERATIONS` / `QUESTIONS_PER_ITERATION` | `2` / `3` | Search depth vs. time and tokens |
 | `SEARCH_ENGINE` | `searxng` | Default engine; a word in the approval (*medical*, *arxiv*…) overrides it per run |
 | `ATTACH_FILES` | `true` | Attach the report as PDF and Markdown downloads |
-| `POLL_SECONDS` / `TIMEOUT_MINUTES` | `5` / `30` | Progress polling; runs over the limit are stopped in LDR |
+| `POLL_SECONDS` / `TIMEOUT_MINUTES` | `5` / `60` | Progress polling; runs over the limit are stopped in LDR |
 | `ADMIN_ONLY` | `true` | Only Open WebUI admins can use it (each run costs tokens) |
 
 **Why non-reasoning models:** LDR asks many short questions (for example "which of these results
@@ -82,3 +85,41 @@ LDR treats as "nothing relevant". Tested good: `google/gemma-4-31B-it`, `meta-ll
 `deepseek-ai/DeepSeek-V3.1`. Reasoning models also tend to leak their thinking into plans, so `PLANNER_MODEL`
 defaults to Gemma too; the plan text is cleaned (leaked `</think>` text and duplicate plans
 are removed) either way.
+
+### Depth: what every run does (tested 2026-11-25)
+
+LDR's research agent decides by itself when it has enough. Left alone, Gemma stopped after one round of
+searches and wrote from search-result snippets. Two changes apply to **every** run:
+
+1. **Instructions in front of the plan** (`DEPTH_INSTRUCTIONS` in the function): research each
+   sub-question separately (LDR's parallel subtopic agents), open and read key sources, check
+   important facts in two sources, do not stop after the first round.
+2. **Page-reading budget** raised from 2 to 8 per topic (`LDR_SEARCH_FETCH_MAX_PER_TOPIC` in compose).
+
+Same plan (heat pump vs gas furnace), measured:
+
+| | `approve` | `approve thorough` |
+|---|---|---|
+| Time | 65 s | 10.6 min |
+| Questions researched | 5 | 14 (86 searches) |
+| Sources gathered | 181 | 780 |
+| Citations in the report | 40 | 179 |
+| Report | 11.5 KB | 108 KB |
+
+Tried and reverted: `LDR_SEARCH_SNIPPETS_ONLY=false` (read every result page in full). The full pages
+crowded the model: 24 sources and 7 citations instead of 181 and 40. PubMed open-access full texts
+(`LDR_SEARCH_ENGINE_WEB_PUBMED_DEFAULT_PARAMS_GET_FULL_TEXT`, up to 3 per search) stay on for *approve medical*.
+
+### Research models that work with LDR (probed 2026-11-25)
+
+LDR needs direct answers to many short prompts; models that think silently first return empty answers.
+
+| Model | Hidden reasoning | Notes |
+|---|---|---|
+| `google/gemma-4-31B-it` | none | **Current default.** Fast, good citations |
+| `meta-llama/Llama-3.3-70B-Instruct` | none | Larger, strong general knowledge; slower |
+| `deepseek-ai/DeepSeek-V3.1` | none | Largest of the usable ones (671B MoE); best reasoning, higher cost |
+| `google/gemma-4-26B-A4B-it` | none | Small and cheap (4B active); for quick runs |
+| Kimi-K2.7-Code, Nemotron 3/3.5, Qwen3.8, DeepSeek-V4.x, GLM-5.x, Beam, MiniMax, gpt-oss | yes | Not suitable for `RESEARCH_MODEL` |
+
+Change it in the function's valves (`RESEARCH_MODEL`).

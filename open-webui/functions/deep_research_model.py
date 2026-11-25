@@ -1,7 +1,7 @@
 """
 title: Deep Research
 author: homelab (HomeLab/open-webui/functions)
-version: 3.5.1
+version: 3.6.0
 required_open_webui_version: 0.6.0
 description: The Deep Research flow behind the Deep Research toggle. Send a topic and it replies with a research plan; reply "approve" (or "approve medical" for PubMed) to run it in Local Deep Research with a live task checklist, then get a cited report plus PDF and Markdown downloads.
 """
@@ -33,8 +33,10 @@ SOURCE_WORDS = [
     (re.compile(r"\b(wikipedia|encyclop(a)?edia)\b", re.I), "wikipedia", "Wikipedia"),
     (re.compile(r"\b(web|searx(ng)?|general)\b", re.I), "searxng", "the web"),
 ]
+THOROUGH_RE = re.compile(r"\b(thorough(ly)?|detailed|in[- ]depth|deep(er)?|full report|long)\b", re.I)
+
 ENGINE_LABEL = {"searxng": "the web", "pubmed": "PubMed medical journals", "arxiv": "arXiv science preprints", "wikipedia": "Wikipedia"}
-FILLER_RE = re.compile(r"[\W_]*((please|pls|thanks|thank you|and|&|run|do|go|it|the|this|that|research|plan|now|start|only|use|using|with|search|sources?|on)[\W_]*)*", re.I)
+FILLER_RE = re.compile(r"[\W_]*((please|pls|thanks|thank you|and|&|run|do|go|it|the|this|that|research|plan|now|start|only|use|using|with|search|sources?|on|report|mode)[\W_]*)*", re.I)
 
 PLANNER_PROMPT = """You are a research planner. Do not answer the user's question and do not search the web.
 Turn the user's topic into a research plan that a separate deep-research engine will execute.
@@ -65,6 +67,19 @@ The reply is the plan only, written once, in this Markdown structure:
 
 Keep it concise and use the user's language. Do not add anything before or after the plan."""
 
+# Sent to LDR in front of the plan. LDR's agent decides by itself when it has enough; without this it often
+# stops after one round of searches and writes from search-result snippets without opening any page.
+DEPTH_INSTRUCTIONS = """Carry out thorough deep research following the approved research plan below.
+How to work:
+1. Research each sub-question separately: use the subtopic research tool so the sub-questions are investigated in parallel.
+2. Do not answer from search-result snippets alone. Open and read the most relevant primary or authoritative sources
+   (official sites, studies, reviews, reputable reporting) before drawing conclusions.
+3. Check every important fact, number and claim in at least two independent sources; note disagreements.
+4. Keep going until every sub-question is answered with evidence. Do not stop after the first round of searches.
+5. Respect the scope and source guidance, then write the requested deliverable with citations.
+
+"""
+
 FOOTER = f"""
 
 ---
@@ -79,9 +94,10 @@ FOOTER = f"""
 | 🩺 **Medical journals** — peer-reviewed studies (PubMed) | `approve medical` |
 | 🔬 **Science preprints** — the newest papers (arXiv) | `approve arxiv` |
 | 📚 **Wikipedia** — quick, encyclopedia-level overview | `approve wikipedia` |
+| 📖 **In-depth report** — longer, section by section | `approve thorough` |
 | ✏️ **Edit** — adjust the plan in your own words | `approve, add "XYZ"` |
 
-⏱️ Research takes about **5 minutes**. You'll see each step tick off as it happens, then get the full report with sources."""
+⏱️ Research takes about **5–10 minutes** (in-depth: **15–30**). You'll see each step tick off as it happens, then get the full report with sources. Mix and match: `approve medical thorough`."""
 
 
 def clean_plan(text: str) -> str:
@@ -120,13 +136,13 @@ class Pipe:
                                   json_schema_extra={"input": {"type": "password"}})
         RESEARCH_MODEL: str = Field(default="google/gemma-4-31B-it",
                                     description="W&B model LDR uses. Non-reasoning only: reasoning models return empty answers to LDR's short prompts")
-        MODE: Literal["quick", "detailed"] = Field(default="quick", description="quick = cited summary (minutes); detailed = long multi-section report")
+        MODE: Literal["quick", "detailed"] = Field(default="quick", description="Default report type: quick = cited summary; detailed = long, section by section (\"approve thorough\" picks detailed per run)")
         ITERATIONS: int = Field(default=2, ge=1, le=8, description="Search rounds")
         QUESTIONS_PER_ITERATION: int = Field(default=3, ge=1, le=8, description="Follow-up questions per round")
         SEARCH_ENGINE: str = Field(default="searxng", description='Default LDR search engine ("approve medical" switches a run to pubmed)')
         ATTACH_FILES: bool = Field(default=True, description="Attach the report as PDF and Markdown downloads")
         POLL_SECONDS: int = Field(default=5, ge=2, le=60)
-        TIMEOUT_MINUTES: int = Field(default=30, ge=5, le=180)
+        TIMEOUT_MINUTES: int = Field(default=60, ge=5, le=180)
         ADMIN_ONLY: bool = Field(default=True, description="Only Open WebUI admins may use it (each run costs LLM tokens)")
 
     def __init__(self):
@@ -157,10 +173,12 @@ class Pipe:
         m = APPROVE_RE.match(last_user)
         if plan_msg and m:
             notes = last_user[m.end():].strip()
-            engine, label, rest = self.valves.SEARCH_ENGINE, "", notes
+            mode = "detailed" if THOROUGH_RE.search(notes) else self.valves.MODE   # "approve thorough"
+            notes_wo_mode = THOROUGH_RE.sub("", notes)
+            engine, label, rest = self.valves.SEARCH_ENGINE, "", notes_wo_mode
             for rx, eng, desc in SOURCE_WORDS:  # "approve medical" -> PubMed
-                if rx.search(notes):
-                    engine, label, rest = eng, desc, rx.sub("", notes)
+                if rx.search(notes_wo_mode):
+                    engine, label, rest = eng, desc, rx.sub("", notes_wo_mode)
                     break
             if FILLER_RE.fullmatch(rest):  # nothing but filler ("please do the research plan") -> no notes
                 notes = ""
@@ -169,7 +187,7 @@ class Pipe:
                 plan += f"\n\n**Primary source:** {label}. Base the findings on it and cite it."
             if notes:
                 plan += f"\n\n**Additional instructions from the user:** {notes}"
-            return await self._research(plan, ui, engine, user)
+            return await self._research(plan, ui, engine, user, mode)
         return await self._plan(msgs, user, __request__, ui, planner)
 
     @staticmethod
@@ -212,17 +230,15 @@ class Pipe:
         return plan + FOOTER
 
     # ---------- step 2: research ----------
-    async def _research(self, plan: str, ui, engine: str, user: dict) -> str:
+    async def _research(self, plan: str, ui, engine: str, user: dict, mode: str = "quick") -> str:
         v = self.valves
         if not v.LDR_PASSWORD:
             return "Deep Research is not configured: set LDR_PASSWORD in the function's valves."
         label = ENGINE_LABEL.get(engine, engine)
         title = (re.search(r"\*\*Research question:\*\*\s*(.+)", plan) or [None, "Deep research report"])[1].strip()
         base = v.LDR_BASE_URL.rstrip("/")
-        query = ("Carry out deep research following this approved research plan. Answer the research question, "
-                 "use the sub-questions and search queries as guidance, respect the scope and source guidance, "
-                 "and produce the requested deliverable with citations.\n\n" + plan)[:9500]
-        steps = Steps(ui, label, v.ATTACH_FILES)
+        query = (DEPTH_INSTRUCTIONS + plan)[:9500]
+        steps = Steps(ui, label, v.ATTACH_FILES, mode)
         await steps.start()
         t0 = time.time()
         rid, files = None, []
@@ -232,7 +248,7 @@ class Pipe:
                                              timeout=aiohttp.ClientTimeout(total=180)) as s:
                 csrf = await self._login(s, base)
                 async with s.post(f"{base}/api/start_research", headers={"X-CSRF-Token": csrf}, json={
-                    "query": query, "mode": v.MODE, "model_provider": "openai_endpoint", "model": v.RESEARCH_MODEL,
+                    "query": query, "mode": mode, "model_provider": "openai_endpoint", "model": v.RESEARCH_MODEL,
                     "search_engine": engine, "search_engines": [engine],
                     "iterations": v.ITERATIONS, "questions_per_iteration": v.QUESTIONS_PER_ITERATION}) as r:
                     data = await r.json(content_type=None)
@@ -389,14 +405,15 @@ class UI:
 class Steps:
     """The research checklist shown in the chat, moved forward by LDR's progress."""
 
-    def __init__(self, ui: UI, label: str, with_files: bool):
+    def __init__(self, ui: UI, label: str, with_files: bool, mode: str = "quick"):
         self.ui, self.label, self.with_files = ui, label, with_files
         self.searches, self.topics, self.sources = 0, 0, 0
         self.items = [
             {"id": "plan", "content": "Read the approved plan and pick search strategies", "status": "pending"},
             {"id": "search", "content": f"Search {label}", "status": "pending"},
             {"id": "read", "content": "Read and compare the sources", "status": "pending"},
-            {"id": "write", "content": "Write the report with citations", "status": "pending"},
+            {"id": "write", "content": "Write the in-depth report, section by section, with citations" if mode == "detailed"
+             else "Write the report with citations", "status": "pending"},
         ]
         if with_files:
             self.items.append({"id": "files", "content": "Prepare PDF and Markdown downloads", "status": "pending"})
@@ -427,7 +444,7 @@ class Steps:
     async def start(self):
         self._set("plan", "in_progress")
         await self._push()
-        await self.ui.status(f"Starting deep research on {self.label}…")
+        await self.ui.status(f"Starting {'in-depth ' if any('in-depth' in t['content'] for t in self.items) else ''}research on {self.label}…")
 
     def _search_text(self, final: bool = False) -> str:
         parts = []

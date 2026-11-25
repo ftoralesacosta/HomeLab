@@ -497,6 +497,12 @@ services:
       # Default is 5 logins / 15 min per IP; every research run logs in, all from the Docker gateway IP.
       # LDR is localhost-only and the service account password is long and random.
       LDR_SECURITY_RATE_LIMIT_LOGIN: "120 per hour"
+      # Pages the research agent may open and read per topic (default 2: reports were built from search snippets).
+      LDR_SEARCH_FETCH_MAX_PER_TOPIC: "8"
+      # LDR_SEARCH_SNIPPETS_ONLY stays at its default (true): tested 2026-11-25, full pages crowded the model and
+      # cut a quick report from 40 to 7 citations. The agent opens the key pages itself (fetch budget above).
+      # PubMed: also download open-access full texts from PubMed Central (up to 3 per search).
+      LDR_SEARCH_ENGINE_WEB_PUBMED_DEFAULT_PARAMS_GET_FULL_TEXT: "true"
       # Closed: the only account is the service account (DEEP_RESEARCH_USER in .env). To add one: "true", up -d, register, back to "false".
       LDR_APP_ALLOW_REGISTRATIONS: "false"
     volumes:
